@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PM Tool — Design Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-deep: #07070A;
+      --bg-base: #0D0D12;
+      --bg-raised: #141419;
+      --bg-surface: #1C1C22;
+      --bg-hover: #24242C;
+      --honey: #E8A838;
+      --honey-dim: #C48A2A;
+      --honey-glow: rgba(232, 168, 56, 0.08);
+      --honey-border: rgba(232, 168, 56, 0.15);
+      --text-primary: #F0EDE8;
+      --text-secondary: #9C9890;
+      --text-muted: #5E5B54;
+      --border: #2A2A32;
+      --border-strong: #3A3A44;
+      --coral: #E87B6B;
+      --blue: #6BA8E8;
+      --green: #5CC9A0;
+      --purple: #B08DE8;
+      --red: #E86B6B;
+      --font-serif: 'Playfair Display', 'Georgia', serif;
+      --font-body: 'Source Sans 3', sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::selection { background: var(--honey); color: var(--bg-deep); }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+    /* ============================
+       LAYOUT
+       ============================ */
+    .app { display: flex; height: 100vh; }
+
+    .titlebar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 40px;
+      background: var(--bg-deep);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding-left: 76px;
+      z-index: 100;
+      -webkit-app-region: drag;
+    }
+
+    .titlebar-dots { position: absolute; left: 16px; display: flex; gap: 8px; }
+    .titlebar-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .titlebar-dot.red { background: #FF5F57; }
+    .titlebar-dot.yellow { background: #FFBD2E; }
+    .titlebar-dot.green { background: #28C840; }
+
+    .titlebar-text {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--honey);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    /* ============================
+       SIDEBAR
+       ============================ */
+    .sidebar {
+      width: 56px;
+      background: var(--bg-deep);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 52px 0 16px;
+      gap: 0;
+      flex-shrink: 0;
+    }
+
+    .sidebar-logo {
+      font-family: var(--font-serif);
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--honey);
+      margin-bottom: 32px;
+    }
+
+    .sidebar-nav { display: flex; flex-direction: column; gap: 0; width: 100%; }
+
+    .nav-btn {
+      width: 100%;
+      height: 44px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 120ms ease;
+    }
+
+    .nav-btn:hover { color: var(--text-secondary); background: var(--bg-raised); }
+
+    .nav-btn.active {
+      color: var(--honey);
+      background: var(--honey-glow);
+      border-left: 2px solid var(--honey);
+    }
+
+    .nav-btn svg { width: 18px; height: 18px; }
+
+    .sidebar-spacer { flex: 1; }
+    .sidebar-bottom { width: 100%; }
+
+    /* ============================
+       MAIN
+       ============================ */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding-top: 40px;
+      overflow: hidden;
+      background: var(--bg-base);
+    }
+
+    .screen { display: none; flex: 1; overflow: hidden; }
+    .screen.active { display: flex; flex-direction: column; }
+
+    /* ============================
+       COMMON
+       ============================ */
+    .screen-header {
+      padding: 40px 48px 32px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+    }
+
+    .screen-title {
+      font-family: var(--font-serif);
+      font-size: 36px;
+      font-weight: 400;
+      color: var(--text-primary);
+      line-height: 1;
+      font-style: italic;
+    }
+
+    .screen-subtitle {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-top: 8px;
+    }
+
+    .btn {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 8px 16px;
+      border: 1px solid var(--border-strong);
+      cursor: pointer;
+      transition: all 120ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+    }
+
+    .btn:hover { border-color: var(--honey); color: var(--honey); }
+
+    .btn-primary {
+      background: var(--honey);
+      color: var(--bg-deep);
+      border-color: var(--honey);
+      font-weight: 600;
+    }
+    .btn-primary:hover { background: var(--honey-dim); border-color: var(--honey-dim); color: var(--bg-deep); }
+
+    .btn-ghost {
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 10px;
+      background: none;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .btn-ghost:hover { color: var(--honey); background: transparent; }
+
+    .btn-sm { font-size: 10px; padding: 5px 10px; }
+
+    .header-actions { display: flex; gap: 8px; }
+
+    .input {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 10px 12px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      outline: none;
+      flex: 1;
+    }
+
+    .input::placeholder { color: var(--text-muted); }
+    .input:focus { border-color: var(--honey-border); background: var(--bg-surface); }
+
+    .status-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 8px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .status-recording { color: var(--coral); }
+    .status-recording::before {
+      content: '';
+      display: inline-block;
+      width: 5px; height: 5px;
+      background: var(--coral);
+      border-radius: 50%;
+      margin-right: 4px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .status-done { color: var(--green); }
+    .status-done::before { content: '\2713\0020'; }
+    .status-pending { color: var(--text-muted); }
+    .status-failed { color: var(--text-muted); text-decoration: line-through; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.2; }
+    }
+
+    /* ============================
+       MEETINGS
+       ============================ */
+    .meeting-grid {
+      padding: 0 48px 48px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .meeting-table { width: 100%; border-collapse: collapse; }
+
+    .meeting-table th {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      text-align: left;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .meeting-table td {
+      padding: 18px 0;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .meeting-table tbody tr { cursor: pointer; transition: background 120ms ease; }
+    .meeting-table tbody tr:hover { background: var(--bg-raised); }
+
+    .meeting-name {
+      font-family: var(--font-serif);
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .meeting-url {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    .meeting-meta {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .join-form {
+      margin: 0 48px;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border-strong);
+    }
+    .form-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .form-row:last-child { margin-bottom: 0; }
+
+    /* ============================
+       TRANSCRIPT
+       ============================ */
+    .transcript-layout { display: flex; flex: 1; overflow: hidden; }
+
+    .transcript-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      min-width: 0;
+    }
+
+    .pane-header {
+      padding: 16px 28px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      background: var(--bg-deep);
+    }
+
+    .pane-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+    }
+
+    .pane-title-main {
+      font-family: var(--font-serif);
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-top: 2px;
+    }
+
+    .transcript-content { flex: 1; overflow-y: auto; padding: 0; }
+
+    .transcript-line {
+      display: flex;
+      gap: 0;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--border);
+      transition: background 120ms ease;
+    }
+    .transcript-line:hover { background: var(--bg-raised); }
+
+    .transcript-timestamp {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      min-width: 44px;
+      padding-top: 3px;
+    }
+
+    .transcript-speaker {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--honey);
+      min-width: 72px;
+      padding-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .transcript-speaker.guest { color: var(--blue); }
+
+    .transcript-text {
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      flex: 1;
+    }
+
+    /* Analysis */
+    .analysis-pane {
+      width: 400px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-raised);
+      flex-shrink: 0;
+    }
+
+    .analysis-content { flex: 1; overflow-y: auto; }
+
+    .analysis-section { border-bottom: 1px solid var(--border); }
+
+    .section-header {
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: background 120ms ease;
+    }
+    .section-header:hover { background: var(--bg-surface); }
+
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-primary);
+    }
+
+    .section-count {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .section-body { padding: 0 24px 20px; }
+
+    .analysis-item {
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      padding: 14px;
+      margin-bottom: 8px;
+      transition: border-color 120ms ease;
+      position: relative;
+    }
+    .analysis-item:hover { border-color: var(--honey-border); }
+
+    .analysis-item-text {
+      font-size: 13px;
+      color: var(--text-primary);
+      line-height: 1.5;
+      margin-bottom: 6px;
+    }
+
+    .analysis-item-ref {
+      font-family: var(--font-serif);
+      font-size: 13px;
+      color: var(--text-muted);
+      font-style: italic;
+      line-height: 1.4;
+    }
+
+    .analysis-item-action { margin-top: 10px; }
+
+    .action-link {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--honey);
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .action-link:hover { color: var(--honey-dim); }
+
+    .summary-list { list-style: none; }
+    .summary-list li {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      padding: 8px 0 8px 16px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    .summary-list li:last-child { border-bottom: none; }
+    .summary-list li::before {
+      content: '\2014';
+      position: absolute;
+      left: 0;
+      color: var(--honey);
+    }
+
+    .quote-item {
+      border-left: 2px solid var(--honey);
+      padding: 0 0 0 20px;
+      margin-bottom: 20px;
+    }
+
+    .quote-text {
+      font-family: var(--font-serif);
+      font-size: 16px;
+      color: var(--text-primary);
+      font-style: italic;
+      line-height: 1.5;
+    }
+
+    .quote-speaker {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .competitor-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 6px;
+      background: var(--honey);
+      color: var(--bg-deep);
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+
+    .sentiment-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      display: inline-block;
+      margin-bottom: 6px;
+    }
+    .sentiment-label.negative { color: var(--coral); }
+    .sentiment-label.negative::before { content: '\25BC\0020'; font-size: 8px; }
+    .sentiment-label.positive { color: var(--green); }
+    .sentiment-label.positive::before { content: '\25B2\0020'; font-size: 8px; }
+
+    /* ============================
+       CHAT
+       ============================ */
+    .chat-layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .chat-msg { display: flex; max-width: 70%; }
+    .chat-msg.user { align-self: flex-end; }
+    .chat-msg.assistant { align-self: flex-start; }
+
+    .chat-bubble { padding: 16px 20px; font-size: 14px; line-height: 1.6; }
+
+    .chat-msg.user .chat-bubble {
+      background: var(--honey);
+      color: var(--bg-deep);
+    }
+
+    .chat-msg.assistant .chat-bubble {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .chat-task-card {
+      background: var(--bg-raised);
+      border: 1px solid var(--honey-border);
+      padding: 20px;
+      max-width: 70%;
+      position: relative;
+    }
+
+    .chat-task-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--honey);
+      margin-bottom: 8px;
+    }
+
+    .chat-task-title {
+      font-family: var(--font-serif);
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .chat-task-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .chat-task-actions { display: flex; gap: 6px; margin-top: 14px; }
+
+    .chat-thinking {
+      align-self: flex-start;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 20px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+    }
+
+    .thinking-dots { display: flex; gap: 5px; }
+    .thinking-dots span {
+      width: 4px; height: 4px;
+      background: var(--honey);
+      border-radius: 50%;
+      animation: thinkBounce 1.4s ease-in-out infinite;
+    }
+    .thinking-dots span:nth-child(2) { animation-delay: 0.16s; }
+    .thinking-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+    @keyframes thinkBounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+      30% { transform: translateY(-4px); opacity: 1; }
+    }
+
+    .chat-suggestions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 14px; }
+
+    .chat-suggestion {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 8px 14px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 120ms ease;
+    }
+    .chat-suggestion:hover { border-color: var(--honey); color: var(--honey); }
+
+    .chat-input-area {
+      padding: 16px 48px 24px;
+      border-top: 1px solid var(--border-strong);
+      background: var(--bg-deep);
+    }
+
+    .chat-input-row { display: flex; gap: 0; }
+
+    .chat-input {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 14px 16px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-right: none;
+      color: var(--text-primary);
+      outline: none;
+    }
+    .chat-input::placeholder { color: var(--text-muted); }
+    .chat-input:focus { border-color: var(--honey-border); background: var(--bg-surface); }
+
+    .chat-send {
+      width: 48px; height: 48px;
+      background: var(--honey);
+      border: 1px solid var(--honey);
+      color: var(--bg-deep);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 120ms ease;
+    }
+    .chat-send:hover { background: var(--honey-dim); }
+    .chat-send svg { width: 16px; height: 16px; }
+
+    /* ============================
+       TASKS
+       ============================ */
+    .tasks-layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+    .tasks-stats {
+      display: flex;
+      gap: 0;
+      margin: 0 48px;
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .stat-card {
+      flex: 1;
+      padding: 24px 0;
+      text-align: center;
+      border-right: 1px solid var(--border);
+    }
+    .stat-card:last-child { border-right: none; }
+
+    .stat-value {
+      font-family: var(--font-serif);
+      font-size: 42px;
+      font-weight: 400;
+      color: var(--honey);
+      font-style: italic;
+    }
+
+    .stat-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-top: 4px;
+    }
+
+    .tasks-content { flex: 1; overflow-y: auto; padding: 0 48px 48px; }
+
+    .task-group-header {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      padding: 24px 0 12px;
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .task-checkbox {
+      width: 18px; height: 18px;
+      border: 1px solid var(--border-strong);
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 3px;
+    }
+    .task-checkbox:hover { border-color: var(--honey); }
+    .task-checkbox.checked { background: var(--honey); border-color: var(--honey); }
+    .task-checkbox svg { width: 11px; height: 11px; color: var(--bg-deep); opacity: 0; }
+    .task-checkbox.checked svg { opacity: 1; }
+
+    .task-item-body { flex: 1; min-width: 0; }
+
+    .task-item-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+
+    .task-item-title {
+      font-family: var(--font-serif);
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .task-item-meta { display: flex; gap: 8px; align-items: center; }
+
+    .task-source {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 600;
+      padding: 1px 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border: 1px solid;
+    }
+    .task-source.auto { border-color: var(--border-strong); color: var(--text-muted); }
+    .task-source.chat { border-color: var(--honey-border); color: var(--honey); }
+
+    .task-item-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px; }
+    .task-item-actions { display: flex; gap: 6px; }
+
+    .task-pushed {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* ============================
+       MODALS
+       ============================ */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(7,7,10,0.85);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.active { display: flex; }
+
+    .modal {
+      background: var(--bg-raised);
+      border: 1px solid var(--border-strong);
+      width: 520px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-header { padding: 28px 28px 0; }
+    .modal-title { font-family: var(--font-serif); font-size: 26px; font-weight: 400; color: var(--text-primary); font-style: italic; }
+    .modal-subtitle { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+    .modal-body { padding: 24px 28px; }
+    .modal-footer { padding: 16px 28px; border-top: 1px solid var(--border-strong); display: flex; justify-content: flex-end; gap: 8px; }
+
+    .form-group { margin-bottom: 20px; }
+    .form-label { display: block; font-family: var(--font-mono); font-size: 10px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .form-hint { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+    .input-with-btn { display: flex; gap: 0; }
+    .input-with-btn .input { border-right: none; }
+
+    .select {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 10px 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      outline: none;
+      width: 100%;
+      appearance: none;
+    }
+
+    .momtest-modal { width: 640px; }
+    .momtest-context {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      outline: none;
+      width: 100%;
+      min-height: 80px;
+      resize: vertical;
+    }
+    .momtest-context::placeholder { color: var(--text-muted); }
+    .momtest-context:focus { border-color: var(--honey-border); }
+
+    .momtest-questions { margin-top: 24px; }
+
+    .momtest-q {
+      border-left: 2px solid var(--honey);
+      padding: 12px 0 12px 20px;
+      margin-bottom: 16px;
+    }
+
+    .momtest-q-number {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--honey);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .momtest-q-text {
+      font-family: var(--font-serif);
+      font-size: 16px;
+      color: var(--text-primary);
+      line-height: 1.45;
+      margin-top: 4px;
+    }
+
+    .momtest-q-purpose {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    /* ============================
+       FADE-IN ANIMATIONS
+       ============================ */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .screen.active .screen-header { animation: fadeIn 0.3s ease both; }
+    .screen.active .meeting-grid { animation: fadeIn 0.3s ease 0.05s both; }
+    .screen.active .transcript-layout { animation: fadeIn 0.3s ease both; }
+    .screen.active .chat-layout { animation: fadeIn 0.3s ease both; }
+    .screen.active .tasks-layout { animation: fadeIn 0.3s ease both; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="titlebar">
+      <div class="titlebar-dots">
+        <div class="titlebar-dot red"></div>
+        <div class="titlebar-dot yellow"></div>
+        <div class="titlebar-dot green"></div>
+      </div>
+      <span class="titlebar-text">PM Tool</span>
+    </div>
+
+    <div class="sidebar">
+      <div class="sidebar-logo">P</div>
+      <div class="sidebar-nav">
+        <button class="nav-btn active" data-screen="meetings" title="Meetings"><svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></button>
+        <button class="nav-btn" data-screen="transcript" title="Transcript"><svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></button>
+        <button class="nav-btn" data-screen="chat" title="Chat"><svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg></button>
+        <button class="nav-btn" data-screen="tasks" title="Tasks"><svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg></button>
+      </div>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-bottom">
+        <button class="nav-btn" id="settings-btn" title="Settings"><svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
+    </div>
+
+    <div class="main">
+      <!-- MEETINGS -->
+      <div class="screen active" id="screen-meetings">
+        <div class="screen-header">
+          <div><div class="screen-title">Meetings</div><div class="screen-subtitle">Record &amp; analyze customer interviews</div></div>
+          <div class="header-actions">
+            <button class="btn" id="momtest-btn">Prepare Questions</button>
+            <button class="btn btn-primary" id="join-meeting-btn">+ Join Meeting</button>
+          </div>
+        </div>
+        <div class="join-form" id="join-form" style="display:none;">
+          <div class="form-row"><input class="input" placeholder="Meeting title" /><input class="input" placeholder="Google Meet / Zoom URL" /></div>
+          <div class="form-row"><button class="btn btn-primary">Send Bot</button><button class="btn" onclick="document.getElementById('join-form').style.display='none'">Cancel</button><div style="flex:1"></div><button class="btn btn-ghost">paste transcript</button></div>
+        </div>
+        <div class="meeting-grid">
+          <table class="meeting-table">
+            <thead><tr><th style="width:44%">Meeting</th><th>Date</th><th>Duration</th><th style="text-align:right">Status</th></tr></thead>
+            <tbody>
+              <tr onclick="switchScreen('transcript')"><td><div class="meeting-name">Enterprise Onboarding — Sarah Chen</div><div class="meeting-url">meet.google.com/abc-defg-hij</div></td><td><span class="meeting-meta">Mar 20, 2026</span></td><td><span class="meeting-meta">42 min</span></td><td style="text-align:right"><span class="status-badge status-done">Done</span></td></tr>
+              <tr><td><div class="meeting-name">Billing Pain Points — Marcus Rivera</div><div class="meeting-url">zoom.us/j/123456789</div></td><td><span class="meeting-meta">Mar 20, 2026</span></td><td><span class="meeting-meta">18 min</span></td><td style="text-align:right"><span class="status-badge status-recording">Rec</span></td></tr>
+              <tr><td><div class="meeting-name">API Integration Feedback — Lena Kowalski</div><div class="meeting-url">meet.google.com/xyz-uvwx-yza</div></td><td><span class="meeting-meta">Mar 19, 2026</span></td><td><span class="meeting-meta">55 min</span></td><td style="text-align:right"><span class="status-badge status-done">Done</span></td></tr>
+              <tr><td><div class="meeting-name">Dashboard Redesign — Tom Nguyen</div><div class="meeting-url">meet.google.com/pending</div></td><td><span class="meeting-meta">Mar 21, 2026</span></td><td><span class="meeting-meta">&mdash;</span></td><td style="text-align:right"><span class="status-badge status-pending">Pending</span></td></tr>
+              <tr><td><div class="meeting-name">Competitor Analysis — Internal</div><div class="meeting-url">zoom.us/j/987654321</div></td><td><span class="meeting-meta">Mar 18, 2026</span></td><td><span class="meeting-meta">&mdash;</span></td><td style="text-align:right"><span class="status-badge status-failed">Failed</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TRANSCRIPT -->
+      <div class="screen" id="screen-transcript">
+        <div class="transcript-layout">
+          <div class="transcript-pane">
+            <div class="pane-header">
+              <div><div class="pane-title">Transcript</div><div class="pane-title-main">Enterprise Onboarding — Sarah Chen</div></div>
+              <button class="btn btn-sm" onclick="switchScreen('chat')">Chat &rarr;</button>
+            </div>
+            <div class="transcript-content">
+              <div class="transcript-line"><span class="transcript-timestamp">0:00</span><span class="transcript-speaker">You</span><span class="transcript-text">Thanks for joining, Sarah. I'd love to hear about how you onboard new enterprise customers today.</span></div>
+              <div class="transcript-line"><span class="transcript-timestamp">0:12</span><span class="transcript-speaker guest">Sarah</span><span class="transcript-text">Sure! So right now our onboarding is... honestly kind of a mess. We have a 14-step process documented in Notion but nobody actually follows it. Each account manager sort of does their own thing.</span></div>
+              <div class="transcript-line"><span class="transcript-timestamp">0:35</span><span class="transcript-speaker">You</span><span class="transcript-text">Can you walk me through what happened with your last enterprise customer?</span></div>
+              <div class="transcript-line"><span class="transcript-timestamp">0:42</span><span class="transcript-speaker guest">Sarah</span><span class="transcript-text">Yeah, so Acme Corp came in — $200K ARR deal. We were supposed to get them live in two weeks. It took six. The main issue was data migration. They had everything in Salesforce and our import tool kept choking on custom fields. We lost a weekend because the migration failed silently — no error messages, just blank data. Our engineering team had to manually fix 4,000 records.</span></div>
+              <div class="transcript-line"><span class="transcript-timestamp">1:28</span><span class="transcript-speaker">You</span><span class="transcript-text">That sounds painful. How did the customer react?</span></div>
+              <div class="transcript-line"><span class="transcript-timestamp">1:33</span><span class="transcript-speaker guest">Sarah</span><span class="transcript-text">They were furious. Their VP of Sales actually emailed our CEO directly. Said they were evaluating HubSpot as a backup. We almost lost them. The only reason they stayed is we gave them three months free and assigned a dedicated engineer for a week.</span></div>
+              <div class="transcript-line"><span class="transcript-timestamp">2:05</span><span class="transcript-speaker">You</span><span class="transcript-text">What would have made that experience different?</span></div>
+              <div class="transcript-line"><span class="transcript-timestamp">2:10</span><span class="transcript-speaker guest">Sarah</span><span class="transcript-text">Honestly? A proper data validation step before we even attempt migration. Let us preview what's going to happen, see which fields map correctly, flag the ones that don't. And real-time progress — I was literally refreshing a page for hours not knowing if it was working or broken. Also, the rollback story is terrible. When something breaks, we should be able to undo it cleanly.</span></div>
+              <div class="transcript-line"><span class="transcript-timestamp">2:48</span><span class="transcript-speaker">You</span><span class="transcript-text">Are there other tools you've seen handle this well?</span></div>
+              <div class="transcript-line"><span class="transcript-timestamp">2:53</span><span class="transcript-speaker guest">Sarah</span><span class="transcript-text">Stripe's migration tooling is great. They have this dry-run mode where you can see exactly what will happen. And Intercom — their import tool shows you a preview with validation errors inline. We should steal both of those ideas honestly.</span></div>
+            </div>
+          </div>
+          <div class="analysis-pane">
+            <div class="pane-header"><div class="pane-title">Analysis</div><span style="font-family:var(--font-mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">&#10003; Complete</span></div>
+            <div class="analysis-content">
+              <div class="analysis-section"><div class="section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><span class="section-title">Summary</span><span class="section-count">4</span></div><div class="section-body"><ul class="summary-list"><li>Enterprise onboarding is broken — 14-step process not followed</li><li>Data migration is the #1 bottleneck — Salesforce custom fields fail silently</li><li>Almost lost $200K ARR customer due to 4-week delay</li><li>Key asks: validation, progress tracking, rollback</li></ul></div></div>
+              <div class="analysis-section"><div class="section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><span class="section-title">Pain Points</span><span class="section-count">4</span></div><div class="section-body"><div class="analysis-item"><div class="analysis-item-text">Silent migration failures on Salesforce custom fields</div><div class="analysis-item-ref">"the migration failed silently — no error messages, just blank data"</div><div class="analysis-item-action"><button class="action-link">+ Create Task</button></div></div><div class="analysis-item"><div class="analysis-item-text">No migration progress visibility</div><div class="analysis-item-ref">"I was literally refreshing a page for hours"</div><div class="analysis-item-action"><button class="action-link">+ Create Task</button></div></div><div class="analysis-item"><div class="analysis-item-text">No rollback capability</div><div class="analysis-item-ref">"the rollback story is terrible"</div><div class="analysis-item-action"><button class="action-link">+ Create Task</button></div></div><div class="analysis-item"><div class="analysis-item-text">Inconsistent onboarding process</div><div class="analysis-item-ref">"nobody actually follows it"</div><div class="analysis-item-action"><button class="action-link">+ Create Task</button></div></div></div></div>
+              <div class="analysis-section"><div class="section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><span class="section-title">Key Quotes</span><span class="section-count">3</span></div><div class="section-body"><div class="quote-item"><div class="quote-text">"The migration failed silently — no error messages, just blank data. Our engineering team had to manually fix 4,000 records."</div><div class="quote-speaker">— Sarah Chen</div></div><div class="quote-item"><div class="quote-text">"Their VP of Sales actually emailed our CEO directly."</div><div class="quote-speaker">— Sarah Chen</div></div><div class="quote-item"><div class="quote-text">"Stripe's migration tooling is great. They have this dry-run mode."</div><div class="quote-speaker">— Sarah Chen</div></div></div></div>
+              <div class="analysis-section"><div class="section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><span class="section-title">Competitors</span><span class="section-count">3</span></div><div class="section-body"><div class="analysis-item"><span class="competitor-tag">HubSpot</span><div class="analysis-item-text">Customer threatened to switch during delayed onboarding</div></div><div class="analysis-item"><span class="competitor-tag">Stripe</span><div class="analysis-item-text">Dry-run migration mode cited as best-in-class</div></div><div class="analysis-item"><span class="competitor-tag">Intercom</span><div class="analysis-item-text">Import tool with inline validation errors praised</div></div></div></div>
+              <div class="analysis-section"><div class="section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><span class="section-title">Sentiment</span><span class="section-count">3</span></div><div class="section-body"><div class="analysis-item"><span class="sentiment-label negative">Negative</span><div class="analysis-item-text">Frustration about silent failures and lack of visibility</div></div><div class="analysis-item"><span class="sentiment-label negative">Negative</span><div class="analysis-item-text">Anxiety about churn — CEO escalation</div></div><div class="analysis-item"><span class="sentiment-label positive">Positive</span><div class="analysis-item-text">Clear vision of "good" via Stripe/Intercom examples</div></div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHAT -->
+      <div class="screen" id="screen-chat">
+        <div class="chat-layout">
+          <div class="pane-header"><div><div class="pane-title">Chat</div><div class="pane-title-main">Enterprise Onboarding — Sarah Chen</div></div></div>
+          <div class="chat-messages">
+            <div class="chat-msg user"><div class="chat-bubble">What were the most critical pain points Sarah mentioned?</div></div>
+            <div class="chat-msg assistant"><div class="chat-bubble">Sarah highlighted three critical issues:<br><br><strong>1. Silent migration failures</strong> — Import tool fails without errors on Salesforce custom fields. 4,000 blank records required manual fixes.<br><br><strong>2. Zero progress visibility</strong> — "Literally refreshing a page for hours" with no feedback.<br><br><strong>3. No rollback</strong> — Turned a 2-week onboarding into 6 weeks, nearly lost $200K ARR. VP of Sales escalated to CEO, threatened HubSpot switch.</div></div>
+            <div class="chat-msg user"><div class="chat-bubble">Create a task for the dry-run migration validation Sarah described</div></div>
+            <div class="chat-msg assistant"><div class="chat-bubble">Created a task based on Sarah's description and the Stripe reference.</div></div>
+            <div class="chat-task-card"><div class="chat-task-label">Task Created</div><div class="chat-task-title">Build dry-run migration validation with field mapping preview</div><div class="chat-task-desc">Pre-migration validation previewing field mapping between Salesforce and target schema. Flag mismatches inline. Reference: Stripe dry-run, Intercom inline errors.</div><div class="chat-task-actions"><button class="btn btn-sm btn-primary">Approve</button><button class="btn btn-sm">Edit</button></div></div>
+            <div class="chat-thinking"><div class="thinking-dots"><span></span><span></span><span></span></div></div>
+          </div>
+          <div class="chat-input-area">
+            <div class="chat-suggestions"><button class="chat-suggestion">What about rollback?</button><button class="chat-suggestion">Create task for progress tracking</button><button class="chat-suggestion">Competitive insights</button></div>
+            <div class="chat-input-row"><input class="chat-input" placeholder="Ask about the transcript..." /><button class="chat-send"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TASKS -->
+      <div class="screen" id="screen-tasks">
+        <div class="tasks-layout">
+          <div class="screen-header"><div><div class="screen-title">Tasks</div><div class="screen-subtitle">Review, approve &amp; push to Linear</div></div><div class="header-actions"><button class="btn btn-primary">Push 3 to Linear &rarr;</button></div></div>
+          <div class="tasks-stats"><div class="stat-card"><div class="stat-value">4</div><div class="stat-label">Draft</div></div><div class="stat-card"><div class="stat-value">3</div><div class="stat-label">Approved</div></div><div class="stat-card"><div class="stat-value">2</div><div class="stat-label">Pushed</div></div></div>
+          <div class="tasks-content">
+            <div class="task-group-header">Draft</div>
+            <div class="task-item"><div class="task-checkbox"></div><div class="task-item-body"><div class="task-item-header"><div class="task-item-title">Add real-time migration progress bar</div><div class="task-item-meta"><span class="task-source auto">Auto</span></div></div><div class="task-item-desc">Replace static page with real-time progress: records processed, ETA, per-field status.</div><div class="task-item-actions"><button class="btn btn-sm btn-primary">Approve</button><button class="btn btn-sm">Edit</button><button class="btn btn-sm btn-ghost" style="color:var(--coral)">Reject</button></div></div></div>
+            <div class="task-item"><div class="task-checkbox"></div><div class="task-item-body"><div class="task-item-header"><div class="task-item-title">Implement migration rollback system</div><div class="task-item-meta"><span class="task-source auto">Auto</span></div></div><div class="task-item-desc">Transactional migration with clean revert capability. Store pre-migration snapshots.</div><div class="task-item-actions"><button class="btn btn-sm btn-primary">Approve</button><button class="btn btn-sm">Edit</button><button class="btn btn-sm btn-ghost" style="color:var(--coral)">Reject</button></div></div></div>
+            <div class="task-item"><div class="task-checkbox"></div><div class="task-item-body"><div class="task-item-header"><div class="task-item-title">Add error messages for Salesforce custom field failures</div><div class="task-item-meta"><span class="task-source auto">Auto</span></div></div><div class="task-item-desc">Detailed error reporting: which fields failed, why, and suggested fixes.</div><div class="task-item-actions"><button class="btn btn-sm btn-primary">Approve</button><button class="btn btn-sm">Edit</button><button class="btn btn-sm btn-ghost" style="color:var(--coral)">Reject</button></div></div></div>
+
+            <div class="task-group-header">Approved</div>
+            <div class="task-item"><div class="task-checkbox checked"><svg fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div><div class="task-item-body"><div class="task-item-header"><div class="task-item-title">Build dry-run migration validation</div><div class="task-item-meta"><span class="task-source chat">Chat</span></div></div><div class="task-item-desc">Pre-migration validation with field mapping preview. Stripe dry-run model.</div></div></div>
+            <div class="task-item"><div class="task-checkbox checked"><svg fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div><div class="task-item-body"><div class="task-item-header"><div class="task-item-title">Inline validation errors for data import</div><div class="task-item-meta"><span class="task-source chat">Chat</span></div></div><div class="task-item-desc">Intercom-style inline validation during import.</div></div></div>
+            <div class="task-item"><div class="task-checkbox checked"><svg fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div><div class="task-item-body"><div class="task-item-header"><div class="task-item-title">Salesforce custom field auto-detection</div><div class="task-item-meta"><span class="task-source auto">Auto</span></div></div><div class="task-item-desc">Auto-detect field types and suggest mappings.</div></div></div>
+
+            <div class="task-group-header">Pushed to Linear</div>
+            <div class="task-item" style="opacity:0.5"><div class="task-checkbox checked"><svg fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div><div class="task-item-body"><div class="task-item-header"><div class="task-item-title" style="text-decoration:line-through">Audit silent failure modes in import pipeline</div><div class="task-item-meta"><span class="task-pushed">ENG-342</span></div></div></div></div>
+            <div class="task-item" style="opacity:0.5"><div class="task-checkbox checked"><svg fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div><div class="task-item-body"><div class="task-item-header"><div class="task-item-title" style="text-decoration:line-through">Customer escalation playbook for onboarding delays</div><div class="task-item-meta"><span class="task-pushed">ENG-343</span></div></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="modal-overlay" id="settings-modal"><div class="modal"><div class="modal-header"><div class="modal-title">Settings</div><div class="modal-subtitle">API Keys &amp; Integrations</div></div><div class="modal-body"><div class="form-group"><label class="form-label">Anthropic API Key</label><input class="input" type="password" value="sk-ant-api03-****" style="width:100%" /><div class="form-hint">Transcript analysis and chat</div></div><div class="form-group"><label class="form-label">Recall.ai API Key</label><input class="input" type="password" placeholder="Enter key" style="width:100%" /></div><div class="form-group"><label class="form-label">Linear API Key</label><div class="input-with-btn"><input class="input" type="password" value="lin_api_****" /><button class="btn">Load Teams</button></div></div><div class="form-group"><label class="form-label">Linear Team</label><select class="select"><option>Engineering</option><option>Product</option></select></div></div><div class="modal-footer"><button class="btn" onclick="document.getElementById('settings-modal').classList.remove('active')">Cancel</button><button class="btn btn-primary" onclick="document.getElementById('settings-modal').classList.remove('active')">Save</button></div></div></div>
+
+  <!-- Mom Test -->
+  <div class="modal-overlay" id="momtest-modal"><div class="modal momtest-modal"><div class="modal-header"><div class="modal-title">Mom Test</div><div class="modal-subtitle">Non-leading interview questions</div></div><div class="modal-body"><textarea class="momtest-context">Enterprise onboarding interview with Sarah Chen, Account Manager. Focus: pain points in onboarding and data migration.</textarea><div style="margin-top:12px"><button class="btn btn-primary">Generate Questions</button></div><div class="momtest-questions"><div class="momtest-q"><div class="momtest-q-number">Q1</div><div class="momtest-q-text">Walk me through the last time you onboarded a new enterprise customer from start to finish.</div><div class="momtest-q-purpose">Surfaces actual workflow, not idealized version.</div></div><div class="momtest-q"><div class="momtest-q-number">Q2</div><div class="momtest-q-text">What happened when something went wrong? How did you handle it?</div><div class="momtest-q-purpose">Past tense forces real stories, not hypotheticals.</div></div><div class="momtest-q"><div class="momtest-q-number">Q3</div><div class="momtest-q-text">How did the customer react when there were delays?</div><div class="momtest-q-purpose">Measures real business impact of the problem.</div></div><div class="momtest-q"><div class="momtest-q-number">Q4</div><div class="momtest-q-text">What tools or workarounds have you tried?</div><div class="momtest-q-purpose">If they've built workarounds, the pain is real.</div></div><div class="momtest-q"><div class="momtest-q-number">Q5</div><div class="momtest-q-text">Have you seen any other product handle this well?</div><div class="momtest-q-purpose">Competitive intelligence without leading.</div></div></div></div><div class="modal-footer"><button class="btn" onclick="document.getElementById('momtest-modal').classList.remove('active')">Close</button><button class="btn btn-primary">Copy to Clipboard</button></div></div></div>
+
+  <script>
+    function switchScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.querySelectorAll('.nav-btn[data-screen]').forEach(b=>b.classList.remove('active'));document.getElementById('screen-'+id).classList.add('active');document.querySelector(`.nav-btn[data-screen="${id}"]`)?.classList.add('active')}
+    document.querySelectorAll('.nav-btn[data-screen]').forEach(b=>b.addEventListener('click',()=>switchScreen(b.dataset.screen)));
+    document.getElementById('join-meeting-btn').addEventListener('click',()=>{const f=document.getElementById('join-form');f.style.display=f.style.display==='none'?'block':'none'});
+    document.getElementById('settings-btn').addEventListener('click',()=>document.getElementById('settings-modal').classList.add('active'));
+    document.getElementById('settings-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('active')});
+    document.getElementById('momtest-btn').addEventListener('click',()=>document.getElementById('momtest-modal').classList.add('active'));
+    document.getElementById('momtest-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('active')});
+    document.querySelectorAll('.task-checkbox:not(.checked)').forEach(cb=>{cb.addEventListener('click',()=>{cb.classList.toggle('checked');if(cb.classList.contains('checked')){cb.innerHTML='<svg fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>';cb.querySelector('svg').style.opacity='1'}else{cb.innerHTML=''}})});
+  </script>
+</body>
+</html>
