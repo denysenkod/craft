@@ -12,7 +12,7 @@ An Electron desktop app that helps product managers turn customer interview tran
 
 ### Screens (sidebar-nav layout, Cursor/Slack-style)
 
-1. **Meetings** — List of past/upcoming meetings. "Join Meeting" button where PM pastes a Google Meet/Zoom link → Recall bot joins. Shows recording status live.
+1. **Meetings** — List of past/upcoming meetings. "Join Meeting" button where PM pastes a Google Meet/Zoom link → Recall bot joins. Shows recording status live. "Prepare questions" button opens Mom Test question generator for upcoming meetings.
 
 2. **Transcript View** — Full transcript on the left. Right panel shows auto-generated analysis:
    - Summary (3-5 bullet points)
@@ -55,8 +55,15 @@ An Electron desktop app that helps product managers turn customer interview tran
 
 - **SQLite via `better-sqlite3`** for local storage. No external database.
 - **All API calls from main process** — keeps API keys out of the renderer.
-- **IPC bridge** — renderer sends commands, main process handles them and sends results back.
-- **Claude API** — used for both transcript analysis (structured output) and the chat interface. Single model, two different system prompts.
+- **IPC bridge** — renderer sends commands, main process handles them and sends results back. Channel contract:
+  - `meeting:create`, `meeting:list`, `meeting:get-status`
+  - `transcript:get`, `transcript:analyze`
+  - `chat:send-message`
+  - `task:list`, `task:update-status`, `task:push-to-linear`
+  - `settings:get`, `settings:set`
+  - `momtest:generate-questions`
+- **Claude API** — use `claude-sonnet-4-20250514` for both analysis and chat (fast, good structured output). Two different system prompts.
+- **Chat-to-task extraction** — use Claude's `tool_use` feature: define a `create_task` tool in the chat system prompt. When the PM asks to create a task, Claude calls the tool with `{title, description}`. This gives reliable structured extraction without parsing hacks.
 - **No separate backend server** — everything runs inside Electron.
 
 ### Tech Stack
@@ -132,7 +139,7 @@ An Electron desktop app that helps product managers turn customer interview tran
     "draft_tasks": [{"title": "...", "description": "..."}]
   }
   ```
-- **Chat call:** System prompt includes full transcript as context. When PM says "create a task for X", Claude returns a task JSON block alongside its conversational response.
+- **Chat call:** System prompt includes full transcript as context. Uses `tool_use` with a `create_task` tool definition (`{title: string, description: string}`) so Claude can reliably create tasks when the PM requests them, alongside its conversational response.
 
 ### Linear API
 - GraphQL endpoint for creating issues (title, description, team ID)
@@ -150,7 +157,7 @@ An Electron desktop app that helps product managers turn customer interview tran
 Dark theme, monospace-accented, Cursor-inspired. Minimal chrome.
 
 ### Layout
-- **Left sidebar** (56px wide, icon-only) — 4 icons: Meetings, Transcripts, Chat, Tasks. Active state highlighted. App logo at top.
+- **Left sidebar** (56px wide, icon-only) — 4 icons: Meetings, Transcripts, Chat, Tasks. Settings gear icon at bottom. App logo at top.
 - **Main content area** — changes based on selected screen.
 - **Split panes** where needed (transcript left / analysis right) with draggable divider.
 
@@ -159,7 +166,8 @@ Dark theme, monospace-accented, Cursor-inspired. Minimal chrome.
 - **Transcript viewer** — scrollable text with speaker labels and timestamps. Clickable highlights linking to analysis items.
 - **Analysis panel** — collapsible sections for each analysis category. Each item has a "Create task" quick action.
 - **Chat interface** — chat bubbles. Tasks generated from chat appear inline as approvable cards.
-- **Task review** — kanban columns: Draft → Approved → Pushed to Linear. Drag or button to move. Bulk approve. Inline edit.
+- **Task review** — kanban columns: Draft → Approved → Pushed to Linear. Drag or button to move. Bulk approve. Inline edit. **Scope-cut candidate:** if time is tight, replace kanban with a simple list + approve/reject buttons.
+- **Settings modal** — Linear API key input, Linear team selection, Recall.ai API key. Opens from gear icon in sidebar.
 
 ## Work Split (8 hours)
 
