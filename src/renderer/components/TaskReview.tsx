@@ -148,6 +148,9 @@ export default function TaskReview() {
                       key={issue.id}
                       onClick={() => setSelectedIssue(issue)}
                       className="text-left w-full p-3 rounded-lg border border-border-base bg-surface-2 hover:border-border-strong transition-colors"
+                      style={{
+                        borderLeft: issue.blockedBy.length > 0 ? '3px solid #E5484D' : undefined,
+                      }}
                     >
                       <div className="flex items-center gap-2 mb-1.5">
                         <PriorityIcon priority={issue.priority} />
@@ -163,6 +166,21 @@ export default function TaskReview() {
                             <span className="font-mono text-[8px] font-semibold text-text-muted">{issue.assigneeInitials}</span>
                           </div>
                           <span className="text-[11px] text-text-muted">{issue.assigneeName}</span>
+                        </div>
+                      )}
+                      {/* Relation badges */}
+                      {(issue.blockedBy.length > 0 || issue.blocking.length > 0) && (
+                        <div className="flex gap-1.5 mt-2 flex-wrap">
+                          {issue.blockedBy.length > 0 && (
+                            <span className="font-mono text-[9px] font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+                              Blocked by {issue.blockedBy.length}
+                            </span>
+                          )}
+                          {issue.blocking.length > 0 && (
+                            <span className="font-mono text-[9px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              Blocks {issue.blocking.length}
+                            </span>
+                          )}
                         </div>
                       )}
                     </button>
