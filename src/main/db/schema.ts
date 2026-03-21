@@ -13,6 +13,7 @@ export const SCHEMA = `
     meeting_id TEXT NOT NULL REFERENCES meetings(id),
     raw_text TEXT NOT NULL,
     analysis_json TEXT,
+    transcript_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -32,7 +33,15 @@ export const SCHEMA = `
     transcript_id TEXT REFERENCES transcripts(id),
     role TEXT NOT NULL,
     content TEXT NOT NULL,
+    session_id TEXT REFERENCES chat_sessions(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_sessions (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'New chat',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS settings (
@@ -52,6 +61,9 @@ export const SCHEMA = `
     recall_bot_id TEXT,
     status TEXT NOT NULL DEFAULT 'scheduled',
     error_message TEXT,
+    transcript_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
 `;

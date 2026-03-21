@@ -26,7 +26,7 @@ export function getDb(): Database.Database {
   return db;
 }
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 export function migrate() {
   const db = getDb();
@@ -61,6 +61,25 @@ export function migrate() {
         ALTER TABLE tasks_new RENAME TO tasks;
       `);
       db.pragma(`user_version = ${CURRENT_VERSION}`);
+    })();
+  }
+
+  if (version < 2) {
+    db.transaction(() => {
+      db.exec(`CREATE TABLE IF NOT EXISTS chat_sessions (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT 'New chat',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`);
+
+      db.exec(`ALTER TABLE chat_messages ADD COLUMN session_id TEXT REFERENCES chat_sessions(id) ON DELETE CASCADE`);
+      db.exec(`ALTER TABLE transcripts ADD COLUMN transcript_json TEXT`);
+      db.exec(`ALTER TABLE meeting_bots ADD COLUMN transcript_id TEXT`);
+
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)`);
+
+      db.pragma('user_version = 2');
     })();
   }
 }
