@@ -18,7 +18,7 @@ export const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
-    transcript_id TEXT NOT NULL REFERENCES transcripts(id),
+    transcript_id TEXT REFERENCES transcripts(id),
     title TEXT NOT NULL,
     description TEXT,
     status TEXT NOT NULL DEFAULT 'draft',
@@ -29,7 +29,7 @@ export const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS chat_messages (
     id TEXT PRIMARY KEY,
-    transcript_id TEXT NOT NULL REFERENCES transcripts(id),
+    transcript_id TEXT REFERENCES transcripts(id),
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -38,5 +38,12 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS auth (
+    provider TEXT PRIMARY KEY,
+    access_token_encrypted TEXT NOT NULL,
+    refresh_token_encrypted TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
   );
 `;

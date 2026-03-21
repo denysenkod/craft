@@ -1,6 +1,10 @@
+import path from 'path';
+import dotenv from 'dotenv';
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
 import { app, BrowserWindow } from 'electron';
 import { registerAllHandlers } from './ipc';
-import { initDb } from './db';
+import { initDb, migrate } from './db';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -27,6 +31,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   initDb();
+  migrate();
   registerAllHandlers();
   createWindow();
 });
