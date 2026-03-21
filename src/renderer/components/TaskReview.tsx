@@ -264,6 +264,34 @@ function IssueDetailModal({ issue, onClose }: { issue: LinearIssue; onClose: () 
           </div>
         </div>
 
+        {/* Relations */}
+        {(issue.blockedBy.length > 0 || issue.blocking.length > 0) && (
+          <div className="px-6 py-4 border-b border-border-base">
+            {issue.blockedBy.length > 0 && (
+              <div className="mb-3">
+                <div className="font-mono text-[9px] uppercase tracking-wider text-red-400 mb-2">Blocked by</div>
+                {issue.blockedBy.map((blocker) => (
+                  <div key={blocker.id} className="flex items-center gap-2 py-1">
+                    <span className="font-mono text-[10px] text-text-muted">{blocker.identifier}</span>
+                    <span className="text-[12px] text-text-secondary">{blocker.title}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {issue.blocking.length > 0 && (
+              <div>
+                <div className="font-mono text-[9px] uppercase tracking-wider text-amber-400 mb-2">Blocks</div>
+                {issue.blocking.map((blocked) => (
+                  <div key={blocked.id} className="flex items-center gap-2 py-1">
+                    <span className="font-mono text-[10px] text-text-muted">{blocked.identifier}</span>
+                    <span className="text-[12px] text-text-secondary">{blocked.title}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Description */}
         <div className="px-6 py-5">
           {issue.description ? (
