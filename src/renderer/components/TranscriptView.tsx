@@ -92,12 +92,8 @@ export default function TranscriptView({ meetingId, meetingTitle, onTranscriptLo
           <div className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted">Transcript</div>
           <div className="text-[15px] font-medium text-text-primary mt-0.5">{meetingTitle}</div>
         </div>
-        {(meetingDate || attendees.length > 0) && (
-          <div className="flex items-center gap-3 text-[12px] text-text-muted shrink-0">
-            {meetingDate && <span>{meetingDate}</span>}
-            {meetingDate && attendees.length > 0 && <span className="text-border-base">|</span>}
-            {attendees.length > 0 && <span>{attendees.join(', ')}</span>}
-          </div>
+        {meetingDate && (
+          <div className="text-[12px] text-text-muted shrink-0">{meetingDate}</div>
         )}
       </div>
       <div className="flex-1 overflow-y-auto">
