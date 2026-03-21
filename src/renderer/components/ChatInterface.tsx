@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import MessageBubble from './chat/MessageBubble';
 
 const TOOL_STATUS: Record<string, string> = {
@@ -26,11 +26,12 @@ interface CurrentContext {
   screen: 'meetings' | 'transcript' | 'tasks';
   transcriptId?: string;
   meetingId?: string;
+  meetingTitle?: string;
 }
 
 interface Proposal {
   proposal_id: string;
-  proposal_type: 'create' | 'update';
+  proposal_type: 'create' | 'update' | 'delete';
   status: 'pending' | 'approved' | 'rejected';
   title?: string;
   description?: string;
@@ -72,10 +73,12 @@ function parseMessage(msg: ChatMessage): ParsedMessage {
 
 interface Props {
   context: CurrentContext;
+  activeSessionId: string | null;
+  onSessionChange: (sessionId: string | null) => void;
   onTaskChanged?: () => void;
 }
 
-export default function ChatInterface({ context, onTaskChanged }: Props) {
+export default function ChatInterface({ context, activeSessionId, onSessionChange, onTaskChanged }: Props) {
   const [messages, setMessages] = useState<ParsedMessage[]>([]);
   const [input, setInput] = useState('');
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
@@ -83,6 +86,19 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
   const [streamBuffer, setStreamBuffer] = useState('');
   const [pendingProposals, setPendingProposals] = useState<Proposal[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Track which proposals are currently being processed (approve/reject in flight)
+  const [processingProposals, setProcessingProposals] = useState<Set<string>>(new Set());
+
+  // Debounced task refresh — waits 1.5s after last call so batch operations settle
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedTaskRefresh = useCallback(() => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => {
+      onTaskChanged?.();
+      refreshTimerRef.current = null;
+    }, 1500);
+  }, [onTaskChanged]);
 
   // Load history on mount
   useEffect(() => {
@@ -111,6 +127,9 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
           break;
         case 'tool_result':
           setActiveTool(null);
+          break;
+        case 'task_changed':
+          debouncedTaskRefresh();
           break;
         case 'message_delta':
           setAgentStatus('streaming');
@@ -141,7 +160,7 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
 
     const subscription = window.api.on('chat:stream-event', handler);
     return () => { window.api.off('chat:stream-event', subscription); };
-  }, []);
+  }, [debouncedTaskRefresh]);
 
   // Auto-scroll
   useEffect(() => {
@@ -156,28 +175,20 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
     if (!text || agentStatus !== 'idle') return;
 
     setInput('');
+    setAgentStatus('thinking');
     // Optimistic: add user message immediately
     const tempMsg: ParsedMessage = { id: 'temp-' + Date.now(), role: 'user', text };
     setMessages(prev => [...prev, tempMsg]);
 
     // Include transcript content on first message after context change
     let transcriptContent: string | undefined;
-    let analysisJson: string | undefined;
-    if (context.transcriptId && context.transcriptId !== lastSentContextRef.current) {
-      try {
-        const transcript = await window.api.invoke('transcript:get', context.transcriptId) as
-          { raw_text?: string; analysis_json?: string } | undefined;
-        if (transcript) {
-          transcriptContent = transcript.raw_text;
-          analysisJson = transcript.analysis_json;
-        }
-      } catch {
-        // Transcript not available, continue without it
-      }
-      lastSentContextRef.current = context.transcriptId;
+    const contextKey = context.meetingId || '';
+    if (transcriptText && contextKey !== lastSentContextRef.current) {
+      transcriptContent = transcriptText;
+      lastSentContextRef.current = contextKey;
     }
 
-    await window.api.invoke('chat:send-message', { message: text, context, transcriptContent, analysisJson });
+    await window.api.invoke('chat:send-message', { message: text, context, transcriptContent });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -192,6 +203,7 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
   };
 
   const handleApprove = async (proposal: Proposal) => {
+    setProcessingProposals(prev => new Set(prev).add(proposal.proposal_id));
     try {
       await window.api.invoke('chat:approve-proposal', { proposal_id: proposal.proposal_id, proposal });
       setMessages(prev => prev.map(msg => {
@@ -203,23 +215,30 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
           ),
         };
       }));
-      onTaskChanged?.();
+      debouncedTaskRefresh();
     } catch (err) {
       console.error('Approve failed:', err);
+    } finally {
+      setProcessingProposals(prev => { const next = new Set(prev); next.delete(proposal.proposal_id); return next; });
     }
   };
 
   const handleReject = async (proposalId: string) => {
-    await window.api.invoke('chat:reject-proposal', { proposal_id: proposalId });
-    setMessages(prev => prev.map(msg => {
-      if (!msg.proposals) return msg;
-      return {
-        ...msg,
-        proposals: msg.proposals.map(p =>
-          p.proposal_id === proposalId ? { ...p, status: 'rejected' as const } : p
-        ),
-      };
-    }));
+    setProcessingProposals(prev => new Set(prev).add(proposalId));
+    try {
+      await window.api.invoke('chat:reject-proposal', { proposal_id: proposalId });
+      setMessages(prev => prev.map(msg => {
+        if (!msg.proposals) return msg;
+        return {
+          ...msg,
+          proposals: msg.proposals.map(p =>
+            p.proposal_id === proposalId ? { ...p, status: 'rejected' as const } : p
+          ),
+        };
+      }));
+    } finally {
+      setProcessingProposals(prev => { const next = new Set(prev); next.delete(proposalId); return next; });
+    }
   };
 
   const handleClearHistory = async () => {
@@ -231,7 +250,7 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
     <div className="flex flex-col flex-1 overflow-hidden p-3">
       <div className="flex flex-col flex-1 overflow-hidden rounded-2xl border border-border-base bg-surface-1">
         {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-4">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-4 chat-scroll">
           {messages.length === 0 && agentStatus === 'idle' && (
             <div className="flex-1 flex items-center justify-center">
               <p className="text-text-muted text-[13px]">Ask me anything about your meetings and tasks.</p>
@@ -244,6 +263,7 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
               role={msg.role}
               content={msg.text}
               proposals={msg.proposals}
+              processingProposals={processingProposals}
               onApprove={handleApprove}
               onReject={handleReject}
             />
@@ -268,6 +288,7 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
               role="assistant"
               content={streamBuffer || ''}
               proposals={pendingProposals.length > 0 ? pendingProposals : undefined}
+              processingProposals={processingProposals}
               onApprove={handleApprove}
               onReject={handleReject}
             />
@@ -282,13 +303,13 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   rows={1}
-                  disabled={agentStatus !== 'idle'}
+                  disabled={agentStatus !== 'idle' || processingProposals.size > 0}
                   className="w-full text-[13px] px-4 pt-3 pb-10 bg-transparent text-text-primary outline-none resize-none placeholder:text-text-muted disabled:opacity-50"
                   placeholder="Ask about your meetings, transcripts, or tasks..."
                 />
                 <div className="absolute bottom-2 right-2 flex items-center gap-2">
                   {/* Clear history */}
-                  {messages.length > 0 && agentStatus === 'idle' && (
+                  {messages.length > 0 && agentStatus === 'idle' && processingProposals.size === 0 && (
                     <button
                       onClick={handleClearHistory}
                       className="w-8 h-8 flex items-center justify-center rounded-full text-text-muted hover:text-red-400 transition-colors"
@@ -299,16 +320,15 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
                       </svg>
                     </button>
                   )}
-                  {/* Cancel / Send */}
-                  {agentStatus !== 'idle' ? (
+                  {/* Stop / Send */}
+                  {agentStatus !== 'idle' || processingProposals.size > 0 ? (
                     <button
                       onClick={handleCancel}
-                      className="w-8 h-8 flex items-center justify-center rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-                      title="Cancel"
+                      className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                      style={{ background: '#E8A838' }}
+                      title="Stop"
                     >
-                      <svg fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" className="w-4 h-4">
-                        <path d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+                      <div style={{ width: 10, height: 10, borderRadius: 2, background: '#07070A' }} />
                     </button>
                   ) : (
                     <button
@@ -328,6 +348,10 @@ export default function ChatInterface({ context, onTaskChanged }: Props) {
       </div>
 
       <style>{`
+        .chat-scroll::-webkit-scrollbar { width: 5px; }
+        .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        .chat-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
         @keyframes thinkBounce {
           0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
           30% { transform: translateY(-4px); opacity: 1; }
