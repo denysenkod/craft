@@ -11,6 +11,7 @@ A context-aware global chat agent that runs in the right-side drawer of the PM t
 - **Proposals, not actions** — `create_task` and `update_task` return proposals rendered as approvable cards in chat. Nothing writes to DB until the user approves.
 - **Global conversation** — one continuous chat thread (not per-transcript). The `chat_messages.transcript_id` column becomes nullable.
 - **Prompt caching friendly** — static system prompt + dynamic context in system message; active transcript content injected as a user message so switching transcripts doesn't invalidate the cache.
+- **Loop safety** — agentic loop capped at 15 tool calls per turn to prevent runaway API usage.
 
 ## Architecture
 
@@ -60,7 +61,9 @@ Renderer (React)                    Main Process (Node.js)
 | `create_task` | `title: string, description: string, transcript_id?: string` | Proposal object with `temp_id` — rendered as approvable card |
 | `update_task` | `task_id: string, title?: string, description?: string, reason: string` | Proposal object showing old/new diff — rendered as diff card |
 
-When the agent calls `create_task` or `update_task` multiple times in a single loop, all proposals are collected and rendered as a batch with "Approve All" / "Reject All" buttons.
+When the agent calls `create_task` or `update_task` multiple times in a single loop, all proposals are collected and rendered as a batch with "Approve All" / "Reject All" buttons. Batch approval loops individual `chat:approve-proposal` calls in the renderer.
+
+Note: `create_task` has `transcript_id` as optional. The `tasks` schema must be updated to make `transcript_id` nullable to support tasks created from general conversation context.
 
 ## Streaming Event Protocol
 
@@ -91,6 +94,30 @@ interface ChatState {
 
 **State transitions:** idle → thinking → tool_call (may cycle) → streaming → idle. Cancel at any non-idle state aborts the loop and flushes partial streamBuffer as a message.
 
+### Proposal Lifecycle
+
+Proposals go through this lifecycle:
+
+1. **Created** — agent calls `create_task`/`update_task` tool, tool executor returns proposal object with a UUID `proposal_id`
+2. **Emitted** — proposals are included in the `{ type: "proposal" }` stream event
+3. **Persisted** — proposals are stored as JSON in the assistant's `chat_messages.content` alongside the text response (structured as `{ text: string, proposals: Proposal[] }`)
+4. **Rendered** — renderer parses the message content and renders proposal cards with approve/reject buttons
+5. **Resolved** — user clicks approve → `chat:approve-proposal` writes to `tasks` table, returns the created/updated task; or reject → `chat:reject-proposal` marks it dismissed
+6. **Updated** — the proposal's status (approved/rejected) is updated in the stored message content so re-opening the chat shows resolved state, not pending cards
+
+This means proposals survive chat drawer close/reopen — they're part of the message history. Pending proposals show action buttons; resolved ones show their outcome (e.g., "Task created" with a checkmark).
+
+### History Management
+
+Conversation history is sent to Claude as prior messages on each turn. To prevent context overflow:
+- Load the last 50 messages from DB for the Claude API call
+- `chat:clear-history` deletes all rows from `chat_messages` to let the user start fresh
+- Message IDs are UUIDs generated via the `uuid` package (already a dependency)
+
+### Agentic Loop Safety
+
+The loop is capped at **15 tool calls per turn**. If the limit is hit, the agent emits `{ type: "error", message: "Reached maximum tool calls for this turn" }` and the loop breaks. The partial response (if any streamed text was already emitted) is still saved.
+
 ## IPC Contract
 
 ### New/Modified Channels
@@ -100,25 +127,100 @@ interface ChatState {
 'chat:send-message'      // { message: string, context: CurrentContext }
 'chat:cancel'            // void — abort current agent loop
 'chat:get-history'       // void — returns ChatMessage[]
-'chat:approve-proposal'  // { proposal_id: string }
-'chat:reject-proposal'   // { proposal_id: string }
+'chat:clear-history'     // void — deletes all chat_messages, returns void
+'chat:approve-proposal'  // { proposal_id: string } — returns created/updated task
+'chat:reject-proposal'   // { proposal_id: string } — returns void
 
 // Listener (main → renderer, push)
 'chat:stream-event'      // StreamEvent (see above)
 ```
 
-### Preload Changes
-
-Add `on` and `off` methods to `window.api` for listening to push events from main process:
+### CurrentContext Type
 
 ```typescript
-window.api.on(channel: Channel, callback: (...args: unknown[]) => void): void
-window.api.off(channel: Channel, callback: (...args: unknown[]) => void): void
+interface CurrentContext {
+  screen: 'meetings' | 'transcript' | 'tasks';
+  transcriptId?: string;   // set when user has a transcript open
+  meetingId?: string;       // set when user has a meeting selected
+}
+```
+
+App.tsx must track the active transcript/meeting IDs (not just the screen name) and pass them to ChatInterface as props, which includes them in every `chat:send-message` call.
+
+### Preload Changes
+
+Add `on` and `off` methods to `window.api` for listening to push events from main process. This requires a separate listener-channel whitelist since `webContents.send()` uses `ipcRenderer.on()`, not `ipcRenderer.invoke()`:
+
+```typescript
+const invokeChannels = ['chat:send-message', 'chat:cancel', ...] as const;
+const listenChannels = ['chat:stream-event'] as const;
+
+contextBridge.exposeInMainWorld('api', {
+  invoke(channel: InvokeChannel, ...args: unknown[]) { ... },
+  on(channel: ListenChannel, callback: (...args: unknown[]) => void) {
+    const subscription = (_event: IpcRendererEvent, ...args: unknown[]) => callback(...args);
+    ipcRenderer.on(channel, subscription);
+    return subscription;  // return ref for cleanup
+  },
+  off(channel: ListenChannel, subscription: (...args: unknown[]) => void) {
+    ipcRenderer.removeListener(channel, subscription);
+  },
+});
 ```
 
 ## Schema Changes
 
-Make `chat_messages.transcript_id` nullable (was required FK). Conversation is global, not per-transcript.
+Two columns become nullable:
+- `chat_messages.transcript_id` — conversation is global, not per-transcript
+- `tasks.transcript_id` — tasks can be created from general chat without a source transcript
+
+### Migration Strategy
+
+The current DB init uses `CREATE TABLE IF NOT EXISTS`, which won't apply column changes to existing tables. Use SQLite's `pragma user_version` to track schema version and run migrations on startup:
+
+```typescript
+const CURRENT_VERSION = 1;
+
+function migrate(db: Database) {
+  const version = db.pragma('user_version', { simple: true }) as number;
+
+  if (version < 1) {
+    // Wrap in transaction — if anything fails, no tables are dropped
+    db.transaction(() => {
+      // SQLite doesn't support ALTER COLUMN, so recreate affected tables
+      db.exec(`
+        CREATE TABLE chat_messages_new (
+          id TEXT PRIMARY KEY,
+          transcript_id TEXT REFERENCES transcripts(id),  -- now nullable
+          role TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO chat_messages_new SELECT * FROM chat_messages;
+        DROP TABLE chat_messages;
+        ALTER TABLE chat_messages_new RENAME TO chat_messages;
+
+        CREATE TABLE tasks_new (
+          id TEXT PRIMARY KEY,
+          transcript_id TEXT REFERENCES transcripts(id),  -- now nullable
+          title TEXT NOT NULL,
+          description TEXT,
+          status TEXT NOT NULL DEFAULT 'draft',
+          linear_issue_id TEXT,
+          source TEXT NOT NULL DEFAULT 'auto',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO tasks_new SELECT * FROM tasks;
+        DROP TABLE tasks;
+        ALTER TABLE tasks_new RENAME TO tasks;
+      `);
+      db.pragma(`user_version = ${CURRENT_VERSION}`);
+    })();
+  }
+}
+```
+
+Call `migrate(db)` after `initDb()` in the app startup sequence.
 
 ## File Structure
 
