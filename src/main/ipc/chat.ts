@@ -1,8 +1,8 @@
 import { ipcMain, BrowserWindow } from 'electron';
-import { v4 as uuid } from 'uuid';
 import { getDb } from '../db';
 import { runAgent, cancelAgent } from '../agent/chat-agent';
 import { CurrentContext } from '../agent/system-prompt';
+import { getTaskProvider } from '../services/task-provider-manager';
 
 export function registerChatHandlers() {
   ipcMain.handle('chat:send-message', async (event, data: { message: string; context: CurrentContext; transcriptContent?: string; analysisJson?: string }) => {
@@ -40,27 +40,33 @@ export function registerChatHandlers() {
       description?: string;
       transcript_id?: string;
       task_id?: string;
-      changes?: { title?: { new: string }; description?: { new: string } };
+      changes?: { title?: { new: string }; description?: { new: string }; status?: { new: string } };
     };
 
-    if (proposal.proposal_type === 'create') {
-      const id = uuid();
-      db.prepare(
-        'INSERT INTO tasks (id, transcript_id, title, description, source) VALUES (?, ?, ?, ?, ?)'
-      ).run(id, proposal.transcript_id || null, proposal.title, proposal.description, 'chat');
-      updateProposalStatus(db, data.proposal_id, 'approved');
-      return { id, title: proposal.title };
-    }
+    try {
+      const provider = getTaskProvider();
 
-    if (proposal.proposal_type === 'update' && proposal.task_id) {
-      if (proposal.changes?.title) {
-        db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(proposal.changes.title.new, proposal.task_id);
+      if (proposal.proposal_type === 'create') {
+        const created = await provider.create({
+          title: proposal.title!,
+          description: proposal.description!,
+        });
+        updateProposalStatus(db, data.proposal_id, 'approved');
+        return { id: created.id, identifier: created.identifier, url: created.url, title: proposal.title };
       }
-      if (proposal.changes?.description) {
-        db.prepare('UPDATE tasks SET description = ? WHERE id = ?').run(proposal.changes.description.new, proposal.task_id);
+
+      if (proposal.proposal_type === 'update' && proposal.task_id) {
+        await provider.update({
+          taskId: proposal.task_id,
+          title: proposal.changes?.title?.new,
+          description: proposal.changes?.description?.new,
+          status: proposal.changes?.status?.new,
+        });
+        updateProposalStatus(db, data.proposal_id, 'approved');
+        return { id: proposal.task_id };
       }
-      updateProposalStatus(db, data.proposal_id, 'approved');
-      return { id: proposal.task_id };
+    } catch (err) {
+      throw new Error(`Failed to save to ${getTaskProvider().name}: ${err instanceof Error ? err.message : 'unknown error'}`);
     }
   });
 

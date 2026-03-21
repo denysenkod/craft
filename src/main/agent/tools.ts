@@ -51,23 +51,22 @@ export const AGENT_TOOLS: Tool[] = [
   },
   {
     name: 'get_task',
-    description: 'Fetch a specific task with its full details and the title of the meeting it originated from.',
+    description: 'Fetch a specific task/issue by ID from the connected project management platform (Linear, Jira, etc.).',
     input_schema: {
       type: 'object' as const,
       properties: {
-        task_id: { type: 'string', description: 'The task UUID' },
+        task_id: { type: 'string', description: 'The task/issue ID' },
       },
       required: ['task_id'],
     },
   },
   {
     name: 'list_tasks',
-    description: 'List tasks with optional filters by status or source transcript.',
+    description: 'List tasks/issues from the connected project management platform (Linear, Jira, etc.). Use this when the user asks about their tasks, backlog, todo items, or issues.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        status: { type: 'string', enum: ['draft', 'approved', 'rejected', 'pushed'], description: 'Filter by task status' },
-        transcript_id: { type: 'string', description: 'Filter to tasks from a specific transcript' },
+        status: { type: 'string', enum: ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done', 'Canceled', 'Duplicate'], description: 'Filter by workflow status' },
         limit: { type: 'number', description: 'Max results to return (default 50)' },
       },
       required: [],
@@ -75,7 +74,7 @@ export const AGENT_TOOLS: Tool[] = [
   },
   {
     name: 'create_task',
-    description: 'Propose creating a new task. This returns a proposal that the user must approve before it is saved. Use this when the user asks to create a task or when you identify actionable work from a transcript.',
+    description: 'Propose creating a new task. This returns a proposal that the user must approve before it is saved to the connected platform. Use this when the user asks to create a task or when you identify actionable work from a transcript.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -88,13 +87,14 @@ export const AGENT_TOOLS: Tool[] = [
   },
   {
     name: 'update_task',
-    description: 'Propose updating an existing task. Returns a proposal showing the diff of changes for user review.',
+    description: 'Propose updating an existing task. Returns a proposal showing the diff of changes for user review. The update is applied to the connected platform after approval.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        task_id: { type: 'string', description: 'The task UUID to update' },
+        task_id: { type: 'string', description: 'The task/issue ID to update' },
         title: { type: 'string', description: 'New title (if changing)' },
         description: { type: 'string', description: 'New description (if changing)' },
+        status: { type: 'string', enum: ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done', 'Canceled', 'Duplicate'], description: 'New workflow status' },
         reason: { type: 'string', description: 'Why this update is suggested' },
       },
       required: ['task_id', 'reason'],

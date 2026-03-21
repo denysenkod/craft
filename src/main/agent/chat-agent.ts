@@ -100,7 +100,7 @@ export async function runAgent(
 
       const response = await client.messages.create(
         {
-          model: 'claude-sonnet-4-20250514',
+          model: process.env.ANTHROPIC_CHAT_MODEL || 'claude-sonnet-4-20250514',
           max_tokens: 4096,
           system: systemPrompt,
           tools: AGENT_TOOLS,
@@ -116,11 +116,18 @@ export async function runAgent(
         if (signal.aborted) break;
 
         if (block.type === 'text') {
-          fullResponse += block.text;
           emit(win, { type: 'message_delta', content: block.text });
+          // Only keep text for the saved message; intermediate text is discarded
+          // when a tool_call arrives (below)
+          fullResponse += block.text;
         } else if (block.type === 'tool_use') {
           toolUseBlocks.push(block);
         }
+      }
+
+      // If tools are about to be called, discard intermediate text
+      if (toolUseBlocks.length > 0) {
+        fullResponse = '';
       }
 
       // If no tool calls, we're done
@@ -143,7 +150,7 @@ export async function runAgent(
 
         emit(win, { type: 'tool_call', tool: block.name, args: block.input });
 
-        const result = executeTool(block.name, block.input as Record<string, unknown>);
+        const result = await executeTool(block.name, block.input as Record<string, unknown>);
 
         // Collect proposals
         if (block.name === 'create_task' || block.name === 'update_task') {

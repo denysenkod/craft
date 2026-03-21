@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { v4 as uuid } from 'uuid';
+import { getTaskProvider } from '../services/task-provider-manager';
 
 export interface Proposal {
   proposal_id: string;
@@ -9,11 +10,11 @@ export interface Proposal {
   description?: string;
   transcript_id?: string;
   task_id?: string;
-  changes?: { title?: { old: string; new: string }; description?: { old: string; new: string } };
+  changes?: { title?: { old: string; new: string }; description?: { old: string; new: string }; status?: { old: string; new: string } };
   reason?: string;
 }
 
-export function executeTool(name: string, input: Record<string, unknown>): unknown {
+export async function executeTool(name: string, input: Record<string, unknown>): Promise<unknown> {
   const db = getDb();
 
   switch (name) {
@@ -74,42 +75,27 @@ export function executeTool(name: string, input: Record<string, unknown>): unkno
     }
 
     case 'get_task': {
-      const row = db.prepare(`
-        SELECT t.id, t.transcript_id, t.title, t.description, t.status,
-               t.source, t.linear_issue_id, t.created_at,
-               m.title as meeting_title
-        FROM tasks t
-        LEFT JOIN transcripts tr ON tr.id = t.transcript_id
-        LEFT JOIN meetings m ON m.id = tr.meeting_id
-        WHERE t.id = ?
-      `).get(input.task_id as string);
-      if (!row) return { error: 'Task not found' };
-      return row;
+      try {
+        const provider = getTaskProvider();
+        const task = await provider.get(input.task_id as string);
+        if (!task) return { error: 'Task not found' };
+        return task;
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Failed to fetch task' };
+      }
     }
 
     case 'list_tasks': {
-      const limit = (input.limit as number) || 50;
-      const status = input.status as string | undefined;
-      const transcriptId = input.transcript_id as string | undefined;
-
-      let sql = `
-        SELECT t.id, t.title, t.description, t.status, t.source,
-               t.transcript_id, t.created_at, m.title as meeting_title
-        FROM tasks t
-        LEFT JOIN transcripts tr ON tr.id = t.transcript_id
-        LEFT JOIN meetings m ON m.id = tr.meeting_id
-      `;
-      const conditions: string[] = [];
-      const params: unknown[] = [];
-
-      if (status) { conditions.push('t.status = ?'); params.push(status); }
-      if (transcriptId) { conditions.push('t.transcript_id = ?'); params.push(transcriptId); }
-
-      if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
-      sql += ' ORDER BY t.created_at DESC LIMIT ?';
-      params.push(limit);
-
-      return db.prepare(sql).all(...params);
+      try {
+        const provider = getTaskProvider();
+        const tasks = await provider.list({
+          status: input.status as string | undefined,
+          limit: (input.limit as number) || 50,
+        });
+        return tasks;
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Failed to list tasks' };
+      }
     }
 
     case 'create_task': {
@@ -125,23 +111,28 @@ export function executeTool(name: string, input: Record<string, unknown>): unkno
     }
 
     case 'update_task': {
-      const existing = db.prepare('SELECT id, title, description FROM tasks WHERE id = ?')
-        .get(input.task_id as string) as { id: string; title: string; description: string } | undefined;
-      if (!existing) return { error: 'Task not found' };
+      try {
+        const provider = getTaskProvider();
+        const existing = await provider.get(input.task_id as string);
+        if (!existing) return { error: 'Task not found' };
 
-      const changes: Proposal['changes'] = {};
-      if (input.title) changes.title = { old: existing.title, new: input.title as string };
-      if (input.description) changes.description = { old: existing.description, new: input.description as string };
+        const changes: Proposal['changes'] = {};
+        if (input.title) changes.title = { old: existing.title, new: input.title as string };
+        if (input.description) changes.description = { old: existing.description, new: input.description as string };
+        if (input.status) changes.status = { old: existing.status, new: input.status as string };
 
-      const proposal: Proposal = {
-        proposal_id: uuid(),
-        proposal_type: 'update',
-        status: 'pending',
-        task_id: input.task_id as string,
-        changes,
-        reason: input.reason as string,
-      };
-      return proposal;
+        const proposal: Proposal = {
+          proposal_id: uuid(),
+          proposal_type: 'update',
+          status: 'pending',
+          task_id: input.task_id as string,
+          changes,
+          reason: input.reason as string,
+        };
+        return proposal;
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Failed to fetch task for update' };
+      }
     }
 
     default:

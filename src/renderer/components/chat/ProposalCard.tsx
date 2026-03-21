@@ -20,96 +20,77 @@ interface Props {
 
 export default function ProposalCard({ proposal, onApprove, onReject }: Props) {
   const isResolved = proposal.status !== 'pending';
+  const isCreate = proposal.proposal_type === 'create';
 
-  if (proposal.proposal_type === 'create') {
+  if (isResolved) {
     return (
-      <div className="max-w-[85%] rounded-2xl overflow-hidden border border-honey/20 bg-surface-2">
-        <div className="px-4 py-3">
-          <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-honey mb-1.5">
-            {isResolved
-              ? proposal.status === 'approved' ? 'Task Created' : 'Task Dismissed'
-              : 'Create Task?'}
-          </div>
-          <div className="text-[14px] font-medium text-text-primary mb-1">{proposal.title}</div>
-          <div className="text-[12px] text-text-secondary leading-snug">{proposal.description}</div>
-        </div>
-        {!isResolved && (
-          <div className="flex gap-1.5 px-4 py-2.5 border-t border-honey/10">
-            <button
-              onClick={() => onApprove(proposal)}
-              className="font-mono text-[10px] font-semibold px-3 py-1.5 bg-honey text-surface-0 rounded-full uppercase tracking-wider hover:bg-honey-dim transition-all"
-            >
-              Approve
-            </button>
-            <button
-              onClick={() => onReject(proposal.proposal_id)}
-              className="font-mono text-[10px] font-medium px-3 py-1.5 border border-border-strong bg-surface-3 text-text-secondary rounded-full uppercase tracking-wider hover:border-red-400 hover:text-red-400 transition-all"
-            >
-              Reject
-            </button>
-          </div>
-        )}
-        {isResolved && (
-          <div className="px-4 py-2 border-t border-honey/10">
-            <span className={`font-mono text-[10px] uppercase tracking-wider ${proposal.status === 'approved' ? 'text-green-400' : 'text-text-muted'}`}>
-              {proposal.status === 'approved' ? 'Approved' : 'Rejected'}
-            </span>
-          </div>
-        )}
+      <div className="self-start flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-2 border border-border-base">
+        <span className={`w-1.5 h-1.5 rounded-full ${proposal.status === 'approved' ? 'bg-green-400' : 'bg-text-muted'}`} />
+        <span className="text-[11px] text-text-muted">
+          {proposal.status === 'approved'
+            ? (isCreate ? 'Task created' : 'Task updated')
+            : (isCreate ? 'Task dismissed' : 'Update dismissed')}
+        </span>
       </div>
     );
   }
 
-  // Update proposal
   return (
-    <div className="max-w-[85%] rounded-2xl overflow-hidden border border-blue-400/20 bg-surface-2">
-      <div className="px-4 py-3">
-        <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-400 mb-1.5">
-          {isResolved
-            ? proposal.status === 'approved' ? 'Task Updated' : 'Update Dismissed'
-            : 'Update Task?'}
-        </div>
-        {proposal.reason && (
-          <div className="text-[12px] text-text-secondary mb-2 italic">{proposal.reason}</div>
-        )}
-        {proposal.changes?.title && (
-          <div className="mb-1.5">
-            <div className="font-mono text-[10px] text-text-muted mb-0.5">Title</div>
-            <div className="text-[12px] text-red-400/70 line-through">{proposal.changes.title.old}</div>
-            <div className="text-[12px] text-green-400">{proposal.changes.title.new}</div>
-          </div>
-        )}
-        {proposal.changes?.description && (
-          <div>
-            <div className="font-mono text-[10px] text-text-muted mb-0.5">Description</div>
-            <div className="text-[11px] text-red-400/70 line-through leading-snug">{proposal.changes.description.old}</div>
-            <div className="text-[11px] text-green-400 leading-snug mt-0.5">{proposal.changes.description.new}</div>
-          </div>
+    <div className="self-start max-w-[85%] rounded-xl overflow-hidden border border-border-strong bg-surface-2">
+      {/* Content preview */}
+      <div className="px-3.5 py-2.5">
+        {isCreate ? (
+          <>
+            <div className="text-[11px] font-mono uppercase tracking-wider text-text-muted mb-1">
+              New task
+            </div>
+            <div className="text-[13px] font-medium text-text-primary">{proposal.title}</div>
+            {proposal.description && (
+              <div className="text-[11px] text-text-secondary mt-1 line-clamp-2">{proposal.description}</div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="text-[11px] font-mono uppercase tracking-wider text-text-muted mb-1">
+              Update task
+            </div>
+            {proposal.changes?.title && (
+              <div className="text-[12px] mb-1">
+                <span className="text-red-400/70 line-through mr-2">{proposal.changes.title.old}</span>
+                <span className="text-green-400">{proposal.changes.title.new}</span>
+              </div>
+            )}
+            {proposal.changes?.description && (
+              <div className="text-[11px] text-text-secondary line-clamp-2">{proposal.changes.description.new}</div>
+            )}
+            {proposal.reason && !proposal.changes?.title && !proposal.changes?.description && (
+              <div className="text-[12px] text-text-secondary">{proposal.reason}</div>
+            )}
+          </>
         )}
       </div>
-      {!isResolved && (
-        <div className="flex gap-1.5 px-4 py-2.5 border-t border-blue-400/10">
-          <button
-            onClick={() => onApprove(proposal)}
-            className="font-mono text-[10px] font-semibold px-3 py-1.5 bg-blue-500 text-white rounded-full uppercase tracking-wider hover:bg-blue-400 transition-all"
-          >
-            Approve
-          </button>
-          <button
-            onClick={() => onReject(proposal.proposal_id)}
-            className="font-mono text-[10px] font-medium px-3 py-1.5 border border-border-strong bg-surface-3 text-text-secondary rounded-full uppercase tracking-wider hover:border-red-400 hover:text-red-400 transition-all"
-          >
-            Reject
-          </button>
-        </div>
-      )}
-      {isResolved && (
-        <div className="px-4 py-2 border-t border-blue-400/10">
-          <span className={`font-mono text-[10px] uppercase tracking-wider ${proposal.status === 'approved' ? 'text-green-400' : 'text-text-muted'}`}>
-            {proposal.status === 'approved' ? 'Approved' : 'Rejected'}
-          </span>
-        </div>
-      )}
+
+      {/* Compact action buttons */}
+      <div className="flex border-t border-border-base">
+        <button
+          onClick={() => onApprove(proposal)}
+          className="flex-1 py-2 text-[12px] font-semibold text-surface-0 bg-honey hover:bg-honey-dim transition-colors flex items-center justify-center gap-1.5"
+        >
+          <svg fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" className="w-3 h-3">
+            <path d="M5 13l4 4L19 7" />
+          </svg>
+          Approve
+        </button>
+        <button
+          onClick={() => onReject(proposal.proposal_id)}
+          className="flex-1 py-2 text-[12px] font-medium text-text-muted hover:text-red-400 transition-colors flex items-center justify-center gap-1.5 border-l border-border-base"
+        >
+          <svg fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" className="w-3 h-3">
+            <path d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          Reject
+        </button>
+      </div>
     </div>
   );
 }

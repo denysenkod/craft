@@ -84,7 +84,7 @@ async function getValidAccessToken(): Promise<string> {
   return tokens.accessToken;
 }
 
-async function getLinearClient(): Promise<LinearClient> {
+export async function getLinearClient(): Promise<LinearClient> {
   const accessToken = await getValidAccessToken();
   return new LinearClient({ accessToken });
 }

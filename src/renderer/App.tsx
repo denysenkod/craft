@@ -22,6 +22,7 @@ export default function App() {
   const [momTestOpen, setMomTestOpen] = useState(false);
   const [transcriptId, setTranscriptId] = useState<string | undefined>();
   const [meetingId, setMeetingId] = useState<string | undefined>();
+  const [taskVersion, setTaskVersion] = useState(0);
 
   const context: CurrentContext = { screen, transcriptId, meetingId };
 
@@ -55,7 +56,7 @@ export default function App() {
         {screen === 'transcript' && (
           <TranscriptView onOpenChat={() => setChatOpen(true)} />
         )}
-        {screen === 'tasks' && <TaskReview />}
+        {screen === 'tasks' && <TaskReview refreshKey={taskVersion} />}
       </div>
 
       {/* Chat toggle button */}
@@ -97,7 +98,7 @@ export default function App() {
             </svg>
           </button>
         </div>
-        <ChatInterface context={context} />
+        <ChatInterface context={context} onTaskChanged={() => setTaskVersion(v => v + 1)} />
       </div>
 
       {/* Modals */}

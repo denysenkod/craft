@@ -40,6 +40,32 @@ interface WorkflowState {
   position: number;
 }
 
+// ── Simple markdown renderer ─────────────────────────────────────────
+
+function renderMarkdown(md: string): string {
+  return md
+    // Horizontal rules
+    .replace(/^---$/gm, '<hr class="border-border-base my-4" />')
+    // Headings
+    .replace(/^### (.+)$/gm, '<h3 class="text-[14px] font-semibold text-text-primary mt-4 mb-1">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-[15px] font-semibold text-text-primary mt-4 mb-1">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-[16px] font-semibold text-text-primary mt-4 mb-1">$1</h1>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code class="text-[12px] px-1 py-0.5 rounded bg-surface-3 text-text-primary font-mono">$1</code>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-text-primary">$1</strong>')
+    // Italic
+    .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
+    // Images: ![alt](url) — show alt text only
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
+    // Links: [text](url)
+    .replace(/\[([^\]]+)\]\(<?([^>)]+)>?\)/g, '<a href="$2" class="text-[#5E6AD2] underline underline-offset-2" target="_blank" rel="noreferrer">$1</a>')
+    // Unordered list items (* item)
+    .replace(/^\* (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+    // Line breaks
+    .replace(/\n/g, '<br />');
+}
+
 // ── Priority icon ───────────────────────────────────────────────────
 
 function PriorityIcon({ priority }: { priority: number }) {
@@ -63,7 +89,7 @@ function PriorityIcon({ priority }: { priority: number }) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export default function TaskReview() {
+export default function TaskReview({ refreshKey = 0 }: { refreshKey?: number }) {
   const [linearIssues, setLinearIssues] = useState<LinearIssue[]>([]);
   const [workflowStates, setWorkflowStates] = useState<WorkflowState[]>([]);
   const [linearConnected, setLinearConnected] = useState(false);
@@ -87,7 +113,7 @@ export default function TaskReview() {
         setLoadingIssues(false);
       }
     });
-  }, []);
+  }, [refreshKey]);
 
   // Columns = workflow states from Linear, already sorted by type+position from the backend
   const columns = workflowStates.map((state) => {
@@ -316,7 +342,7 @@ function IssueDetailModal({ issue, onClose }: { issue: LinearIssue; onClose: () 
         {/* Description */}
         <div className="px-6 py-5">
           {issue.description ? (
-            <div className="text-[13px] text-text-secondary leading-relaxed whitespace-pre-line">{issue.description}</div>
+            <div className="text-[13px] text-text-secondary leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(issue.description) }} />
           ) : (
             <div className="text-[13px] text-text-muted italic">No description</div>
           )}
