@@ -2,12 +2,16 @@ import React, { useState } from 'react';
 
 declare global {
   interface Window {
-    api: { invoke: (channel: string, ...args: unknown[]) => Promise<unknown> };
+    api: {
+      invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+      on: (channel: string, callback: (...args: unknown[]) => void) => (...args: unknown[]) => void;
+      off: (channel: string, subscription: (...args: unknown[]) => void) => void;
+    };
   }
 }
 
 interface MeetingListProps {
-  onOpenTranscript: () => void;
+  onOpenTranscript: (transcriptId: string, meetingId: string) => void;
   onOpenMomTest: () => void;
 }
 
@@ -91,7 +95,7 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
               <tr
                 key={m.id}
                 className="cursor-pointer transition-colors hover:bg-surface-2"
-                onClick={() => m.status === 'done' && onOpenTranscript()}
+                onClick={() => m.status === 'done' && onOpenTranscript(m.id, m.id)}
               >
                 <td className="py-4.5 border-b border-border-base">
                   <div className="text-[15px] font-medium text-text-primary">{m.title}</div>

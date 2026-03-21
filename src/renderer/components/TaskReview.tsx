@@ -4,6 +4,8 @@ declare global {
   interface Window {
     api: {
       invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+      on: (channel: string, callback: (...args: unknown[]) => void) => (...args: unknown[]) => void;
+      off: (channel: string, subscription: (...args: unknown[]) => void) => void;
     };
   }
 }

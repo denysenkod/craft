@@ -1,97 +1,337 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import MessageBubble from './chat/MessageBubble';
+import ToolCallIndicator from './chat/ToolCallIndicator';
+import ProposalCard from './chat/ProposalCard';
 
-const MOCK_MESSAGES = [
-  { role: 'user' as const, content: 'What were the most critical pain points Sarah mentioned?' },
-  { role: 'assistant' as const, content: 'Sarah highlighted three critical issues:\n\n1. Silent migration failures — Import tool fails without errors on Salesforce custom fields. 4,000 blank records required manual fixes.\n\n2. Zero progress visibility — "Literally refreshing a page for hours" with no feedback.\n\n3. No rollback — Turned a 2-week onboarding into 6 weeks, nearly lost $200K ARR. VP of Sales escalated to CEO, threatened HubSpot switch.' },
-  { role: 'user' as const, content: 'Create a task for the dry-run migration validation Sarah described' },
-  { role: 'assistant' as const, content: "Created a task based on Sarah's description and the Stripe reference." },
-];
+declare global {
+  interface Window {
+    api: {
+      invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+      on: (channel: string, callback: (...args: unknown[]) => void) => (...args: unknown[]) => void;
+      off: (channel: string, subscription: (...args: unknown[]) => void) => void;
+    };
+  }
+}
 
-const MOCK_TASK = {
-  title: 'Build dry-run migration validation with field mapping preview',
-  description: 'Pre-migration validation previewing field mapping between Salesforce and target schema. Flag mismatches inline. Reference: Stripe dry-run, Intercom inline errors.',
-};
+interface CurrentContext {
+  screen: 'meetings' | 'transcript' | 'tasks';
+  transcriptId?: string;
+  meetingId?: string;
+}
 
-const SUGGESTIONS = ['What about rollback?', 'Create task for progress tracking', 'Competitive insights'];
+interface Proposal {
+  proposal_id: string;
+  proposal_type: 'create' | 'update';
+  status: 'pending' | 'approved' | 'rejected';
+  title?: string;
+  description?: string;
+  transcript_id?: string;
+  task_id?: string;
+  changes?: { title?: { old: string; new: string }; description?: { old: string; new: string } };
+  reason?: string;
+}
 
-export default function ChatInterface() {
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+interface ParsedMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  proposals?: Proposal[];
+}
+
+type AgentStatus = 'idle' | 'thinking' | 'tool_call' | 'streaming';
+
+function parseMessage(msg: ChatMessage): ParsedMessage {
+  if (msg.role === 'assistant') {
+    try {
+      const parsed = JSON.parse(msg.content);
+      if (parsed.text !== undefined && parsed.proposals) {
+        return { id: msg.id, role: msg.role, text: parsed.text, proposals: parsed.proposals };
+      }
+    } catch {
+      // Not JSON, treat as plain text
+    }
+  }
+  return { id: msg.id, role: msg.role, text: msg.content };
+}
+
+interface Props {
+  context: CurrentContext;
+}
+
+export default function ChatInterface({ context }: Props) {
+  const [messages, setMessages] = useState<ParsedMessage[]>([]);
   const [input, setInput] = useState('');
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
+  const [activeTool, setActiveTool] = useState<{ name: string; args: Record<string, unknown> } | null>(null);
+  const [streamBuffer, setStreamBuffer] = useState('');
+  const [pendingProposals, setPendingProposals] = useState<Proposal[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load history on mount
+  useEffect(() => {
+    (async () => {
+      const history = await window.api.invoke('chat:get-history') as ChatMessage[];
+      setMessages(history.map(parseMessage));
+    })();
+  }, []);
+
+  // Subscribe to stream events
+  useEffect(() => {
+    const handler = (event: unknown) => {
+      const e = event as Record<string, unknown>;
+      switch (e.type) {
+        case 'thinking':
+          setAgentStatus('thinking');
+          break;
+        case 'tool_call':
+          setAgentStatus('tool_call');
+          setActiveTool({ name: e.tool as string, args: e.args as Record<string, unknown> });
+          break;
+        case 'tool_result':
+          setActiveTool(null);
+          break;
+        case 'message_delta':
+          setAgentStatus('streaming');
+          setStreamBuffer(prev => prev + (e.content as string));
+          break;
+        case 'proposal':
+          setPendingProposals(prev => [...prev, ...(e.proposals as Proposal[])]);
+          break;
+        case 'done': {
+          setAgentStatus('idle');
+          setActiveTool(null);
+          // Reload messages from DB to get the persisted state
+          (async () => {
+            const history = await window.api.invoke('chat:get-history') as ChatMessage[];
+            setMessages(history.map(parseMessage));
+          })();
+          setStreamBuffer('');
+          setPendingProposals([]);
+          break;
+        }
+        case 'error':
+          setAgentStatus('idle');
+          setActiveTool(null);
+          setStreamBuffer('');
+          break;
+      }
+    };
+
+    const subscription = window.api.on('chat:stream-event', handler);
+    return () => { window.api.off('chat:stream-event', subscription); };
+  }, []);
+
+  // Auto-scroll
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, streamBuffer, agentStatus]);
+
+  // Track which transcript context was last sent to avoid re-sending
+  const lastSentContextRef = useRef<string | undefined>(undefined);
+
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text || agentStatus !== 'idle') return;
+
+    setInput('');
+    // Optimistic: add user message immediately
+    const tempMsg: ParsedMessage = { id: 'temp-' + Date.now(), role: 'user', text };
+    setMessages(prev => [...prev, tempMsg]);
+
+    // Include transcript content on first message after context change
+    let transcriptContent: string | undefined;
+    let analysisJson: string | undefined;
+    if (context.transcriptId && context.transcriptId !== lastSentContextRef.current) {
+      try {
+        const transcript = await window.api.invoke('transcript:get', context.transcriptId) as
+          { raw_text?: string; analysis_json?: string } | undefined;
+        if (transcript) {
+          transcriptContent = transcript.raw_text;
+          analysisJson = transcript.analysis_json;
+        }
+      } catch {
+        // Transcript not available, continue without it
+      }
+      lastSentContextRef.current = context.transcriptId;
+    }
+
+    await window.api.invoke('chat:send-message', { message: text, context, transcriptContent, analysisJson });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleCancel = () => {
+    window.api.invoke('chat:cancel');
+  };
+
+  const handleApprove = async (proposal: Proposal) => {
+    await window.api.invoke('chat:approve-proposal', { proposal_id: proposal.proposal_id, proposal });
+    // Update local state
+    setMessages(prev => prev.map(msg => {
+      if (!msg.proposals) return msg;
+      return {
+        ...msg,
+        proposals: msg.proposals.map(p =>
+          p.proposal_id === proposal.proposal_id ? { ...p, status: 'approved' as const } : p
+        ),
+      };
+    }));
+  };
+
+  const handleReject = async (proposalId: string) => {
+    await window.api.invoke('chat:reject-proposal', { proposal_id: proposalId });
+    setMessages(prev => prev.map(msg => {
+      if (!msg.proposals) return msg;
+      return {
+        ...msg,
+        proposals: msg.proposals.map(p =>
+          p.proposal_id === proposalId ? { ...p, status: 'rejected' as const } : p
+        ),
+      };
+    }));
+  };
+
+  const handleClearHistory = async () => {
+    await window.api.invoke('chat:clear-history');
+    setMessages([]);
+  };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
-      {/* Header */}
-      <div className="px-7 py-4 border-b border-border-base shrink-0 bg-surface-0">
-        <div className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted">Chat</div>
-        <div className="text-[15px] font-medium text-text-primary mt-0.5">Enterprise Onboarding — Sarah Chen</div>
-      </div>
+    <div className="flex flex-col flex-1 overflow-hidden p-3">
+      <div className="flex flex-col flex-1 overflow-hidden rounded-2xl border border-border-base bg-surface-1">
+        {/* Messages */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-4">
+          {messages.length === 0 && agentStatus === 'idle' && (
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-text-muted text-[13px]">Ask me anything about your meetings and tasks.</p>
+            </div>
+          )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-12 py-8 flex flex-col gap-6">
-        {MOCK_MESSAGES.map((msg, i) => (
-          <div key={i} className={`flex max-w-[70%] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
-            <div
-              className="px-5 py-4 text-sm leading-relaxed"
-              style={{
-                background: msg.role === 'user' ? '#E8A838' : '#1C1C22',
-                color: msg.role === 'user' ? '#07070A' : '#F0EDE8',
-                border: msg.role === 'assistant' ? '1px solid #2A2A32' : 'none',
-                whiteSpace: 'pre-line',
-              }}
-            >
-              {msg.content}
+          {messages.map((msg) => (
+            <React.Fragment key={msg.id}>
+              <MessageBubble role={msg.role} content={msg.text} />
+              {msg.proposals?.map((p) => (
+                <ProposalCard key={p.proposal_id} proposal={p} onApprove={handleApprove} onReject={handleReject} />
+              ))}
+            </React.Fragment>
+          ))}
+
+          {/* Live streaming text */}
+          {streamBuffer && (
+            <MessageBubble role="assistant" content={streamBuffer} />
+          )}
+
+          {/* Live proposals (before done event) */}
+          {pendingProposals.map((p) => (
+            <ProposalCard key={p.proposal_id} proposal={p} onApprove={handleApprove} onReject={handleReject} />
+          ))}
+
+          {/* Batch approve/reject for multiple proposals in a single message */}
+          {messages.length > 0 && (() => {
+            const lastMsg = messages[messages.length - 1];
+            const pending = lastMsg.proposals?.filter(p => p.status === 'pending') || [];
+            if (pending.length < 2) return null;
+            return (
+              <div className="flex gap-2 self-start">
+                <button
+                  onClick={() => pending.forEach(p => handleApprove(p))}
+                  className="font-mono text-[10px] font-semibold px-3 py-1.5 bg-honey text-surface-0 rounded-full uppercase tracking-wider hover:bg-honey-dim transition-all"
+                >
+                  Approve All ({pending.length})
+                </button>
+                <button
+                  onClick={() => pending.forEach(p => handleReject(p.proposal_id))}
+                  className="font-mono text-[10px] font-medium px-3 py-1.5 border border-border-strong bg-surface-3 text-text-secondary rounded-full uppercase tracking-wider hover:border-red-400 hover:text-red-400 transition-all"
+                >
+                  Reject All
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Tool call indicator */}
+          {activeTool && (
+            <ToolCallIndicator tool={activeTool.name} args={activeTool.args} />
+          )}
+
+          {/* Thinking indicator */}
+          {agentStatus === 'thinking' && !activeTool && (
+            <div className="self-start px-4 py-3 rounded-2xl bg-surface-2 border border-border-base">
+              <div className="flex gap-1.5">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="w-1.5 h-1.5 rounded-full bg-honey"
+                    style={{ animation: 'thinkBounce 1.4s ease-in-out infinite', animationDelay: `${i * 0.16}s` }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Input area */}
+        <div className="px-3 pb-3">
+          <div className="relative rounded-xl border border-border-base bg-surface-2 overflow-hidden">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              disabled={agentStatus !== 'idle'}
+              className="w-full text-[13px] px-4 pt-3 pb-10 bg-transparent text-text-primary outline-none resize-none placeholder:text-text-muted disabled:opacity-50"
+              placeholder="Ask about your meetings, transcripts, or tasks..."
+            />
+            <div className="absolute bottom-2 right-2 flex items-center gap-2">
+              {/* Clear history */}
+              {messages.length > 0 && agentStatus === 'idle' && (
+                <button
+                  onClick={handleClearHistory}
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-text-muted hover:text-red-400 transition-colors"
+                  title="Clear chat history"
+                >
+                  <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" className="w-4 h-4">
+                    <path d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                  </svg>
+                </button>
+              )}
+              {/* Cancel / Send */}
+              {agentStatus !== 'idle' ? (
+                <button
+                  onClick={handleCancel}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                  title="Cancel"
+                >
+                  <svg fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" className="w-4 h-4">
+                    <path d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                  style={{ background: input.trim() ? '#E8A838' : '#2A2A32' }}
+                  disabled={!input.trim()}
+                >
+                  <svg fill="none" stroke={input.trim() ? '#07070A' : '#5E5B54'} strokeWidth={2} viewBox="0 0 24 24" className="w-4 h-4">
+                    <path d="M12 19V5m0 0l-5 5m5-5l5 5" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
-        ))}
-
-        {/* Task Card */}
-        <div className="max-w-[70%] p-5 bg-surface-2 border border-honey/20">
-          <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-honey mb-2">Task Created</div>
-          <div className="text-[15px] font-medium text-text-primary mb-1.5">{MOCK_TASK.title}</div>
-          <div className="text-[13px] text-text-secondary leading-snug">{MOCK_TASK.description}</div>
-          <div className="flex gap-1.5 mt-3.5">
-            <button className="font-mono text-[10px] font-semibold px-2.5 py-1.5 bg-honey text-surface-0 border border-honey uppercase tracking-wider hover:bg-honey-dim transition-all">Approve</button>
-            <button className="font-mono text-[10px] font-medium px-2.5 py-1.5 border border-border-strong bg-surface-3 text-text-secondary uppercase tracking-wider hover:border-honey hover:text-honey transition-all">Edit</button>
-          </div>
-        </div>
-
-        {/* Thinking indicator */}
-        <div className="self-start px-5 py-4 bg-surface-3 border border-border-base flex items-center gap-2">
-          <div className="flex gap-1.5">
-            {[0, 1, 2].map((i) => (
-              <span
-                key={i}
-                className="w-1 h-1 rounded-full bg-honey"
-                style={{ animation: 'thinkBounce 1.4s ease-in-out infinite', animationDelay: `${i * 0.16}s` }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Input Area */}
-      <div className="px-12 pt-4 pb-6 border-t border-border-strong bg-surface-0">
-        <div className="flex gap-2 flex-wrap justify-center mb-3.5">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              className="font-mono text-[11px] px-3.5 py-2 bg-surface-2 border border-border-base text-text-secondary hover:border-honey hover:text-honey transition-all"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-        <div className="flex">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="flex-1 font-mono text-xs px-4 py-3.5 bg-surface-2 border border-border-base border-r-0 text-text-primary outline-none focus:border-honey/30"
-            placeholder="Ask about the transcript..."
-          />
-          <button className="w-12 h-12 bg-honey border border-honey flex items-center justify-center hover:bg-honey-dim transition-colors">
-            <svg fill="none" stroke="#07070A" strokeWidth={2} viewBox="0 0 24 24" className="w-4 h-4">
-              <path d="M5 12h14M12 5l7 7-7 7" />
-            </svg>
-          </button>
         </div>
       </div>
 
