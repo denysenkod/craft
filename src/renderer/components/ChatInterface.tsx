@@ -122,6 +122,8 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; updated_at: string }>>([]);
   const [sessionTitle, setSessionTitle] = useState('New chat');
   const [searchQuery, setSearchQuery] = useState('');
+  const historyRef = useRef<HTMLDivElement>(null);
+  const historyToggleRef = useRef<HTMLButtonElement>(null);
 
   // Load history when session changes
   useEffect(() => {
@@ -206,6 +208,29 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
   const filteredSessions = sessions.filter(s =>
     !searchQuery || s.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Click-outside/Escape handler for history dropdown
+  useEffect(() => {
+    if (!showHistory) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        historyRef.current && !historyRef.current.contains(e.target as Node) &&
+        historyToggleRef.current && !historyToggleRef.current.contains(e.target as Node)
+      ) {
+        setShowHistory(false);
+        setSearchQuery('');
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowHistory(false); setSearchQuery(''); }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showHistory]);
 
   const handleSend = async () => {
     const text = input.trim();
@@ -349,7 +374,7 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Chat header with session controls */}
-      <div className="px-5 py-3 border-b border-border-base shrink-0">
+      <div className="px-5 py-3 border-b border-border-base shrink-0 relative">
         <div className="flex items-center justify-between">
           <div className="text-[13px] font-medium text-text-primary truncate max-w-[260px]">{sessionTitle}</div>
           <div className="flex items-center gap-1">
@@ -363,6 +388,7 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
               </svg>
             </button>
             <button
+              ref={historyToggleRef}
               onClick={toggleHistory}
               className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
                 showHistory ? 'text-text-primary bg-surface-2' : 'text-text-muted hover:text-text-primary hover:bg-surface-2'
@@ -386,57 +412,62 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
             )}
           </div>
         </div>
+
+        {/* History dropdown */}
+        {showHistory && (
+          <div
+            ref={historyRef}
+            className="absolute left-0 right-0 top-full z-50 border-b border-border-base bg-surface-0 shadow-lg flex flex-col"
+            style={{ maxHeight: 'calc(3 * 58px + 42px)' }}
+          >
+            {/* Search bar */}
+            <div className="px-4 py-2.5 border-b border-border-base flex items-center gap-2.5 shrink-0">
+              <svg fill="none" stroke="#5E5B54" strokeWidth={1.5} viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
+                <path d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
+                placeholder="Search"
+                autoFocus
+              />
+              <span className="text-[11px] text-text-muted whitespace-nowrap">All Conversations</span>
+            </div>
+
+            {/* Session list */}
+            <div className="overflow-y-auto chat-scroll">
+              {filteredSessions.length === 0 && (
+                <div className="px-4 py-5 text-center text-[12px] text-text-muted">
+                  {searchQuery ? 'No matching conversations' : 'No conversations yet'}
+                </div>
+              )}
+              {filteredSessions.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => handleLoadSession(s.id)}
+                  className={`w-full text-left px-4 py-3 flex items-start gap-3 transition-colors ${
+                    s.id === activeSessionId
+                      ? 'bg-surface-2'
+                      : 'hover:bg-surface-2/50'
+                  }`}
+                >
+                  <svg fill="none" stroke={s.id === activeSessionId ? '#E8A838' : '#5E5B54'} strokeWidth={1.5} viewBox="0 0 24 24" className="w-4 h-4 mt-0.5 shrink-0">
+                    <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-[13px] truncate ${s.id === activeSessionId ? 'text-text-primary' : 'text-text-secondary'}`}>{s.title}</div>
+                  </div>
+                  <span className="text-[11px] text-text-muted shrink-0 mt-0.5">{formatRelativeTime(s.updated_at)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {showHistory ? (
-        /* ── History panel ── */
-        <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Search bar */}
-          <div className="px-4 py-2.5 border-b border-border-base flex items-center gap-2.5">
-            <svg fill="none" stroke="#5E5B54" strokeWidth={1.5} viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
-              <path d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
-              placeholder="Search"
-              autoFocus
-            />
-            <span className="text-[11px] text-text-muted whitespace-nowrap">All Conversations</span>
-          </div>
-
-          {/* Session list */}
-          <div className="flex-1 overflow-y-auto chat-scroll">
-            {filteredSessions.length === 0 && (
-              <div className="px-4 py-8 text-center text-[12px] text-text-muted">
-                {searchQuery ? 'No matching conversations' : 'No conversations yet'}
-              </div>
-            )}
-            {filteredSessions.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => handleLoadSession(s.id)}
-                className={`w-full text-left px-4 py-3 flex items-start gap-3 transition-colors group ${
-                  s.id === activeSessionId
-                    ? 'bg-surface-2'
-                    : 'hover:bg-surface-2/50'
-                }`}
-              >
-                <svg fill="none" stroke={s.id === activeSessionId ? '#E8A838' : '#5E5B54'} strokeWidth={1.5} viewBox="0 0 24 24" className="w-4 h-4 mt-0.5 shrink-0">
-                  <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-[13px] truncate ${s.id === activeSessionId ? 'text-text-primary' : 'text-text-secondary'}`}>{s.title}</div>
-                </div>
-                <span className="text-[11px] text-text-muted shrink-0 mt-0.5">{formatRelativeTime(s.updated_at)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        /* ── Chat messages and input ── */
-        <div className="flex flex-col flex-1 overflow-hidden p-3">
+      {/* ── Chat messages and input ── */}
+      <div className="flex flex-col flex-1 overflow-hidden p-3">
           <div className="flex flex-col flex-1 overflow-hidden rounded-2xl border border-border-base bg-surface-1">
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-4 chat-scroll">
@@ -543,7 +574,6 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
             }
           `}</style>
         </div>
-      )}
     </div>
   );
 }
