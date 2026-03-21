@@ -86,6 +86,8 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
   const [streamBuffer, setStreamBuffer] = useState('');
   const [pendingProposals, setPendingProposals] = useState<Proposal[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
 
   // Track which proposals are currently being processed (approve/reject in flight)
   const [processingProposals, setProcessingProposals] = useState<Set<string>>(new Set());
@@ -100,13 +102,17 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
     }, 1500);
   }, [onTaskChanged]);
 
-  // Load history on mount
+  // Load history when session changes
   useEffect(() => {
+    if (!activeSessionId) {
+      setMessages([]);
+      return;
+    }
     (async () => {
-      const history = await window.api.invoke('chat:get-history') as ChatMessage[];
+      const history = await window.api.invoke('chat:get-history', activeSessionId) as ChatMessage[];
       setMessages(history.map(parseMessage));
     })();
-  }, []);
+  }, [activeSessionId]);
 
   // Subscribe to stream events
   useEffect(() => {
@@ -142,12 +148,13 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
           setAgentStatus('idle');
           setActiveTool(null);
           setStreamBuffer('');
-          // Reload messages from DB — clear pendingProposals only after history loads
-          (async () => {
-            const history = await window.api.invoke('chat:get-history') as ChatMessage[];
-            setMessages(history.map(parseMessage));
-            setPendingProposals([]);
-          })();
+          if (activeSessionIdRef.current) {
+            (async () => {
+              const history = await window.api.invoke('chat:get-history', activeSessionIdRef.current) as ChatMessage[];
+              setMessages(history.map(parseMessage));
+              setPendingProposals([]);
+            })();
+          }
           break;
         }
         case 'error':
@@ -160,7 +167,7 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
 
     const subscription = window.api.on('chat:stream-event', handler);
     return () => { window.api.off('chat:stream-event', subscription); };
-  }, [debouncedTaskRefresh]);
+  }, [debouncedTaskRefresh, activeSessionId]);
 
   // Auto-scroll
   useEffect(() => {
@@ -176,19 +183,50 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
 
     setInput('');
     setAgentStatus('thinking');
-    // Optimistic: add user message immediately
     const tempMsg: ParsedMessage = { id: 'temp-' + Date.now(), role: 'user', text };
     setMessages(prev => [...prev, tempMsg]);
 
-    // Include transcript content on first message after context change
-    let transcriptContent: string | undefined;
-    const contextKey = context.meetingId || '';
-    if (transcriptText && contextKey !== lastSentContextRef.current) {
-      transcriptContent = transcriptText;
-      lastSentContextRef.current = contextKey;
+    // Lazy session creation — create on first message
+    let sessionId = activeSessionId;
+    if (!sessionId) {
+      const session = await window.api.invoke('chat:create-session') as { id: string };
+      sessionId = session.id;
+      activeSessionIdRef.current = sessionId;
+      onSessionChange(sessionId);
     }
 
-    await window.api.invoke('chat:send-message', { message: text, context, transcriptContent });
+    // Update session title on first user message
+    if (messages.length === 0) {
+      const title = text.substring(0, 60);
+      window.api.invoke('chat:update-session-title', sessionId, title).catch(err => console.error('Failed to update session title:', err));
+    }
+
+    // Include transcript content on first message after context change
+    let transcriptContent: string | undefined;
+    const contextKey = context.transcriptId || '';
+    if (contextKey && contextKey !== lastSentContextRef.current) {
+      try {
+        const transcript = await window.api.invoke('transcript:get', contextKey) as { raw_text: string } | null;
+        if (transcript) {
+          transcriptContent = transcript.raw_text;
+          lastSentContextRef.current = contextKey;
+        }
+      } catch (err) {
+        console.error('Failed to fetch transcript for context:', err);
+      }
+    }
+
+    try {
+      await window.api.invoke('chat:send-message', {
+        message: text,
+        context,
+        sessionId,
+        transcriptContent,
+      });
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      setAgentStatus('idle');
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -242,8 +280,11 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
   };
 
   const handleClearHistory = async () => {
-    await window.api.invoke('chat:clear-history');
+    if (activeSessionId) {
+      await window.api.invoke('chat:clear-history', activeSessionId);
+    }
     setMessages([]);
+    onSessionChange(null);
   };
 
   return (
