@@ -340,6 +340,3 @@ function IssueDetailModal({ issue, onClose }: { issue: LinearIssue; onClose: () 
   );
 }
 
-function PriorityIconStandalone({ priority }: { priority: number }) {
-  return <PriorityIcon priority={priority} />;
-}
