@@ -67,6 +67,7 @@ export default function TaskReview() {
   const [linearConnected, setLinearConnected] = useState(false);
   const [loadingIssues, setLoadingIssues] = useState(true);
   const [selectedIssue, setSelectedIssue] = useState<LinearIssue | null>(null);
+  const [showBlockedOnly, setShowBlockedOnly] = useState(false);
 
   useEffect(() => {
     window.api.invoke('linear:status').then((status: any) => {
@@ -87,11 +88,16 @@ export default function TaskReview() {
   }, []);
 
   // Columns = workflow states from Linear, already sorted by type+position from the backend
-  const columns = workflowStates.map((state) => ({
-    ...state,
-    issues: linearIssues.filter((issue) => issue.status === state.name),
-    blockedCount: linearIssues.filter((issue) => issue.status === state.name && issue.blockedBy.length > 0).length,
-  }));
+  const columns = workflowStates.map((state) => {
+    const allIssues = linearIssues.filter((issue) => issue.status === state.name);
+    const filteredIssues = showBlockedOnly ? allIssues.filter((i) => i.blockedBy.length > 0) : allIssues;
+    return {
+      ...state,
+      issues: filteredIssues,
+      totalCount: allIssues.length,
+      blockedCount: allIssues.filter((i) => i.blockedBy.length > 0).length,
+    };
+  });
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -102,9 +108,22 @@ export default function TaskReview() {
           <p className="font-mono text-[10px] text-text-muted uppercase tracking-[0.12em] mt-1.5">Linear Issues</p>
         </div>
         {linearConnected && (
-          <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-            <span className="font-mono text-[10px] text-text-muted">Connected</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowBlockedOnly(!showBlockedOnly)}
+              className="font-mono text-[10px] px-3 py-1.5 rounded-full border transition-all"
+              style={{
+                borderColor: showBlockedOnly ? '#E5484D' : '#3A3A44',
+                color: showBlockedOnly ? '#E5484D' : '#5E5B54',
+                background: showBlockedOnly ? 'rgba(229,72,77,0.1)' : 'transparent',
+              }}
+            >
+              {showBlockedOnly ? 'Showing blocked' : 'Show blocked'}
+            </button>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+              <span className="font-mono text-[10px] text-text-muted">Connected</span>
+            </div>
           </div>
         )}
       </div>
