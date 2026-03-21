@@ -4,7 +4,7 @@ import { getTaskProvider } from '../services/task-provider-manager';
 
 export interface Proposal {
   proposal_id: string;
-  proposal_type: 'create' | 'update';
+  proposal_type: 'create' | 'update' | 'delete';
   status: 'pending' | 'approved' | 'rejected';
   title?: string;
   description?: string;
@@ -99,6 +99,18 @@ export async function executeTool(name: string, input: Record<string, unknown>):
     }
 
     case 'create_task': {
+      if (input.auto_execute) {
+        try {
+          const provider = getTaskProvider();
+          const created = await provider.create({
+            title: input.title as string,
+            description: input.description as string,
+          });
+          return { auto_executed: true, id: created.id, identifier: created.identifier, title: input.title };
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : 'Failed to create task' };
+        }
+      }
       const proposal: Proposal = {
         proposal_id: uuid(),
         proposal_type: 'create',
@@ -116,6 +128,16 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         const existing = await provider.get(input.task_id as string);
         if (!existing) return { error: 'Task not found' };
 
+        if (input.auto_execute) {
+          await provider.update({
+            taskId: input.task_id as string,
+            title: input.title as string | undefined,
+            description: input.description as string | undefined,
+            status: input.status as string | undefined,
+          });
+          return { auto_executed: true, id: input.task_id, identifier: existing.identifier, title: existing.title, reason: input.reason };
+        }
+
         const changes: Proposal['changes'] = {};
         if (input.title) changes.title = { old: existing.title, new: input.title as string };
         if (input.description) changes.description = { old: existing.description, new: input.description as string };
@@ -132,6 +154,26 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         return proposal;
       } catch (err) {
         return { error: err instanceof Error ? err.message : 'Failed to fetch task for update' };
+      }
+    }
+
+    case 'delete_task': {
+      try {
+        const provider = getTaskProvider();
+        const existing = await provider.get(input.task_id as string);
+        if (!existing) return { error: 'Task not found' };
+
+        const proposal: Proposal = {
+          proposal_id: uuid(),
+          proposal_type: 'delete',
+          status: 'pending',
+          task_id: input.task_id as string,
+          title: existing.title,
+          reason: input.reason as string,
+        };
+        return proposal;
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Failed to fetch task for deletion' };
       }
     }
 

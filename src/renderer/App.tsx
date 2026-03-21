@@ -107,6 +107,7 @@ export default function App() {
             activeSessionId={activeSessionId}
             onSessionChange={setActiveSessionId}
             onTaskChanged={() => setTaskVersion(v => v + 1)}
+            onNavigateToTasks={() => { setScreen('tasks'); setTasksChatOpen(true); }}
           />
         </div>
       )}

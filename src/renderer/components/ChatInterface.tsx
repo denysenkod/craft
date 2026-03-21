@@ -92,9 +92,10 @@ interface Props {
   activeSessionId: string | null;
   onSessionChange: (sessionId: string | null) => void;
   onTaskChanged?: () => void;
+  onNavigateToTasks?: () => void;
 }
 
-export default function ChatInterface({ context, activeSessionId, onSessionChange, onTaskChanged }: Props) {
+export default function ChatInterface({ context, activeSessionId, onSessionChange, onTaskChanged, onNavigateToTasks }: Props) {
   const [messages, setMessages] = useState<ParsedMessage[]>([]);
   const [input, setInput] = useState('');
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
@@ -164,6 +165,9 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
           break;
         case 'task_changed':
           debouncedTaskRefresh();
+          break;
+        case 'task_created':
+          onNavigateToTasks?.();
           break;
         case 'message_delta':
           setAgentStatus('streaming');

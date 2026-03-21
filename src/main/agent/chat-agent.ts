@@ -155,6 +155,9 @@ export async function runAgent(
           const resultObj = result as Record<string, unknown>;
           if (resultObj.auto_executed) {
             emit(win, { type: 'task_changed' });
+            if (block.name === 'create_task') {
+              emit(win, { type: 'task_created' });
+            }
           } else if (resultObj.proposal_id) {
             collectedProposals.push(result as Proposal);
           }
