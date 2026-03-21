@@ -6,6 +6,7 @@ const invokeChannels = [
   'transcript:get', 'transcript:analyze',
   'chat:send-message', 'chat:cancel', 'chat:get-history', 'chat:clear-history',
   'chat:approve-proposal', 'chat:reject-proposal',
+  'chat:create-session', 'chat:list-sessions', 'chat:update-session-title',
   'task:list', 'task:create', 'task:update-status', 'task:push-to-linear',
   'linear:auth', 'linear:status', 'linear:disconnect', 'linear:get-teams', 'linear:get-issues', 'linear:get-states',
   'settings:get', 'settings:set',
