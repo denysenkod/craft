@@ -71,6 +71,21 @@ function parseMessage(msg: ChatMessage): ParsedMessage {
   return { id: msg.id, role: msg.role, text: msg.content };
 }
 
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
 interface Props {
   context: CurrentContext;
   activeSessionId: string | null;
@@ -102,15 +117,26 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
     }, 1500);
   }, [onTaskChanged]);
 
+  const [showHistory, setShowHistory] = useState(false);
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string; updated_at: string }>>([]);
+  const [sessionTitle, setSessionTitle] = useState('New chat');
+  const historyRef = useRef<HTMLDivElement>(null);
+  const historyToggleRef = useRef<HTMLButtonElement>(null);
+
   // Load history when session changes
   useEffect(() => {
     if (!activeSessionId) {
       setMessages([]);
+      setSessionTitle('New chat');
       return;
     }
     (async () => {
       const history = await window.api.invoke('chat:get-history', activeSessionId) as ChatMessage[];
       setMessages(history.map(parseMessage));
+      const firstUser = history.find(m => m.role === 'user');
+      if (firstUser) {
+        setSessionTitle(firstUser.content.substring(0, 60));
+      }
     })();
   }, [activeSessionId]);
 
@@ -177,6 +203,28 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
   // Track which transcript context was last sent to avoid re-sending
   const lastSentContextRef = useRef<string | undefined>(undefined);
 
+  // Click-outside/Escape handler for history dropdown
+  useEffect(() => {
+    if (!showHistory) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        historyRef.current && !historyRef.current.contains(e.target as Node) &&
+        historyToggleRef.current && !historyToggleRef.current.contains(e.target as Node)
+      ) {
+        setShowHistory(false);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowHistory(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showHistory]);
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || agentStatus !== 'idle') return;
@@ -199,6 +247,7 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
     if (messages.length === 0) {
       const title = text.substring(0, 60);
       window.api.invoke('chat:update-session-title', sessionId, title).catch(err => console.error('Failed to update session title:', err));
+      setSessionTitle(title);
     }
 
     // Include transcript content on first message after context change
@@ -279,125 +328,211 @@ export default function ChatInterface({ context, activeSessionId, onSessionChang
     }
   };
 
+  const resetChatState = () => {
+    setMessages([]);
+    setSessionTitle('New chat');
+    setShowHistory(false);
+    lastSentContextRef.current = undefined;
+    onSessionChange(null);
+  };
+
   const handleClearHistory = async () => {
     if (activeSessionId) {
       await window.api.invoke('chat:clear-history', activeSessionId);
     }
-    setMessages([]);
-    onSessionChange(null);
+    resetChatState();
+  };
+
+  const handleNewChat = () => {
+    resetChatState();
+  };
+
+  const handleLoadSession = (sessionId: string) => {
+    onSessionChange(sessionId);
+    setShowHistory(false);
+    const session = sessions.find(s => s.id === sessionId);
+    if (session) setSessionTitle(session.title);
+  };
+
+  const toggleHistory = async () => {
+    if (!showHistory) {
+      const list = await window.api.invoke('chat:list-sessions') as Array<{ id: string; title: string; updated_at: string }>;
+      setSessions(list);
+    }
+    setShowHistory(prev => !prev);
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden p-3">
-      <div className="flex flex-col flex-1 overflow-hidden rounded-2xl border border-border-base bg-surface-1">
-        {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-4 chat-scroll">
-          {messages.length === 0 && agentStatus === 'idle' && (
-            <div className="flex-1 flex items-center justify-center">
-              <p className="text-text-muted text-[13px]">Ask me anything about your meetings and tasks.</p>
-            </div>
-          )}
-
-          {messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              role={msg.role}
-              content={msg.text}
-              proposals={msg.proposals}
-              processingProposals={processingProposals}
-              onApprove={handleApprove}
-              onReject={handleReject}
-            />
-          ))}
-
-          {/* Transient status indicator (thinking / tool calls) */}
-          {agentStatus !== 'idle' && !streamBuffer && (
-            <div className="self-start flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-surface-2 border border-border-base">
-              <span
-                className="w-1.5 h-1.5 rounded-full bg-honey shrink-0"
-                style={{ animation: 'thinkBounce 1.4s ease-in-out infinite' }}
-              />
-              <span className="text-[12px] text-text-muted">
-                {activeTool ? (TOOL_STATUS[activeTool.name] || `Running ${activeTool.name}`) : 'Thinking...'}
-              </span>
-            </div>
-          )}
-
-          {/* Final answer streaming in (with live proposals if any) */}
-          {(streamBuffer || pendingProposals.length > 0) && (
-            <MessageBubble
-              role="assistant"
-              content={streamBuffer || ''}
-              proposals={pendingProposals.length > 0 ? pendingProposals : undefined}
-              processingProposals={processingProposals}
-              onApprove={handleApprove}
-              onReject={handleReject}
-            />
-          )}
-        </div>
-
-        {/* Input area */}
-        <div className="px-3 pb-3">
-          <div className="relative rounded-xl border border-border-base bg-surface-2 overflow-hidden">
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  rows={1}
-                  disabled={agentStatus !== 'idle' || processingProposals.size > 0}
-                  className="w-full text-[13px] px-4 pt-3 pb-10 bg-transparent text-text-primary outline-none resize-none placeholder:text-text-muted disabled:opacity-50"
-                  placeholder="Ask about your meetings, transcripts, or tasks..."
-                />
-                <div className="absolute bottom-2 right-2 flex items-center gap-2">
-                  {/* Clear history */}
-                  {messages.length > 0 && agentStatus === 'idle' && processingProposals.size === 0 && (
-                    <button
-                      onClick={handleClearHistory}
-                      className="w-8 h-8 flex items-center justify-center rounded-full text-text-muted hover:text-red-400 transition-colors"
-                      title="Clear chat history"
-                    >
-                      <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" className="w-4 h-4">
-                        <path d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                      </svg>
-                    </button>
-                  )}
-                  {/* Stop / Send */}
-                  {agentStatus !== 'idle' || processingProposals.size > 0 ? (
-                    <button
-                      onClick={handleCancel}
-                      className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
-                      style={{ background: '#E8A838' }}
-                      title="Stop"
-                    >
-                      <div style={{ width: 10, height: 10, borderRadius: 2, background: '#07070A' }} />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleSend}
-                      className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
-                      style={{ background: input.trim() ? '#E8A838' : '#2A2A32' }}
-                      disabled={!input.trim()}
-                    >
-                      <svg fill="none" stroke={input.trim() ? '#07070A' : '#5E5B54'} strokeWidth={2} viewBox="0 0 24 24" className="w-4 h-4">
-                        <path d="M12 19V5m0 0l-5 5m5-5l5 5" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Chat header with session controls */}
+      <div className="px-5 py-3 border-b border-border-base shrink-0 relative">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted">Chat</div>
+            <div className="text-[13px] font-medium text-text-primary mt-0.5 truncate max-w-[260px]">{sessionTitle}</div>
+          </div>
+          <div className="flex items-center gap-1 mt-0.5">
+            {/* New chat */}
+            <button
+              onClick={handleNewChat}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors"
+              title="New chat"
+            >
+              <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" className="w-4 h-4">
+                <path d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </button>
+            {/* Chat history */}
+            <button
+              ref={historyToggleRef}
+              onClick={toggleHistory}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors"
+              title="Chat history"
+            >
+              <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" className="w-4 h-4">
+                <path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
           </div>
         </div>
+
+        {/* History dropdown */}
+        {showHistory && (
+          <div
+            ref={historyRef}
+            className="absolute top-full right-3 mt-1 w-72 max-h-80 overflow-y-auto rounded-lg border border-border-base bg-surface-1 shadow-lg z-50 chat-scroll"
+          >
+            {sessions.length === 0 && (
+              <div className="px-4 py-3 text-[12px] text-text-muted">No chat history</div>
+            )}
+            {sessions.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => handleLoadSession(s.id)}
+                className={`w-full text-left px-4 py-2.5 hover:bg-surface-2 transition-colors border-b border-border-base last:border-b-0 ${
+                  s.id === activeSessionId ? 'bg-surface-2' : ''
+                }`}
+              >
+                <div className="text-[13px] text-text-primary truncate">{s.title}</div>
+                <div className="text-[11px] text-text-muted mt-0.5">{formatRelativeTime(s.updated_at)}</div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <style>{`
-        .chat-scroll::-webkit-scrollbar { width: 5px; }
-        .chat-scroll::-webkit-scrollbar-track { background: transparent; }
-        .chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-        .chat-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
-        @keyframes thinkBounce {
-          0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
-          30% { transform: translateY(-4px); opacity: 1; }
-        }
-      `}</style>
+      {/* Messages and input */}
+      <div className="flex flex-col flex-1 overflow-hidden p-3">
+        <div className="flex flex-col flex-1 overflow-hidden rounded-2xl border border-border-base bg-surface-1">
+          {/* Messages */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-4 chat-scroll">
+            {messages.length === 0 && agentStatus === 'idle' && (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-text-muted text-[13px]">Ask me anything about your meetings and tasks.</p>
+              </div>
+            )}
+
+            {messages.map((msg) => (
+              <MessageBubble
+                key={msg.id}
+                role={msg.role}
+                content={msg.text}
+                proposals={msg.proposals}
+                processingProposals={processingProposals}
+                onApprove={handleApprove}
+                onReject={handleReject}
+              />
+            ))}
+
+            {/* Transient status indicator (thinking / tool calls) */}
+            {agentStatus !== 'idle' && !streamBuffer && (
+              <div className="self-start flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-surface-2 border border-border-base">
+                <span
+                  className="w-1.5 h-1.5 rounded-full bg-honey shrink-0"
+                  style={{ animation: 'thinkBounce 1.4s ease-in-out infinite' }}
+                />
+                <span className="text-[12px] text-text-muted">
+                  {activeTool ? (TOOL_STATUS[activeTool.name] || `Running ${activeTool.name}`) : 'Thinking...'}
+                </span>
+              </div>
+            )}
+
+            {/* Final answer streaming in (with live proposals if any) */}
+            {(streamBuffer || pendingProposals.length > 0) && (
+              <MessageBubble
+                role="assistant"
+                content={streamBuffer || ''}
+                proposals={pendingProposals.length > 0 ? pendingProposals : undefined}
+                processingProposals={processingProposals}
+                onApprove={handleApprove}
+                onReject={handleReject}
+              />
+            )}
+          </div>
+
+          {/* Input area */}
+          <div className="px-3 pb-3">
+            <div className="relative rounded-xl border border-border-base bg-surface-2 overflow-hidden">
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    rows={1}
+                    disabled={agentStatus !== 'idle' || processingProposals.size > 0}
+                    className="w-full text-[13px] px-4 pt-3 pb-10 bg-transparent text-text-primary outline-none resize-none placeholder:text-text-muted disabled:opacity-50"
+                    placeholder="Ask about your meetings, transcripts, or tasks..."
+                  />
+                  <div className="absolute bottom-2 right-2 flex items-center gap-2">
+                    {/* Clear history */}
+                    {messages.length > 0 && agentStatus === 'idle' && processingProposals.size === 0 && (
+                      <button
+                        onClick={handleClearHistory}
+                        className="w-8 h-8 flex items-center justify-center rounded-full text-text-muted hover:text-red-400 transition-colors"
+                        title="Clear chat history"
+                      >
+                        <svg fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" className="w-4 h-4">
+                          <path d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                        </svg>
+                      </button>
+                    )}
+                    {/* Stop / Send */}
+                    {agentStatus !== 'idle' || processingProposals.size > 0 ? (
+                      <button
+                        onClick={handleCancel}
+                        className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                        style={{ background: '#E8A838' }}
+                        title="Stop"
+                      >
+                        <div style={{ width: 10, height: 10, borderRadius: 2, background: '#07070A' }} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleSend}
+                        className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                        style={{ background: input.trim() ? '#E8A838' : '#2A2A32' }}
+                        disabled={!input.trim()}
+                      >
+                        <svg fill="none" stroke={input.trim() ? '#07070A' : '#5E5B54'} strokeWidth={2} viewBox="0 0 24 24" className="w-4 h-4">
+                          <path d="M12 19V5m0 0l-5 5m5-5l5 5" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+            </div>
+          </div>
+        </div>
+
+        <style>{`
+          .chat-scroll::-webkit-scrollbar { width: 5px; }
+          .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+          .chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+          .chat-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+          @keyframes thinkBounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+            30% { transform: translateY(-4px); opacity: 1; }
+          }
+        `}</style>
+      </div>
     </div>
   );
 }

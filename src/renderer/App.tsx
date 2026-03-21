@@ -102,11 +102,6 @@ export default function App() {
           className="flex flex-col bg-surface-0 border-l border-border-base shrink-0"
           style={{ width: '420px', marginTop: '40px' }}
         >
-          {/* Chat header */}
-          <div className="px-5 py-3 border-b border-border-base shrink-0">
-            <div className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted">Chat</div>
-            <div className="text-[13px] font-medium text-text-primary mt-0.5">PM Assistant</div>
-          </div>
           <ChatInterface
             context={context}
             activeSessionId={activeSessionId}
