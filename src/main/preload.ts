@@ -5,7 +5,7 @@ const channels = [
   'transcript:get', 'transcript:analyze',
   'chat:send-message',
   'task:list', 'task:create', 'task:update-status', 'task:push-to-linear',
-  'linear:get-teams',
+  'linear:auth', 'linear:status', 'linear:disconnect', 'linear:get-teams', 'linear:get-issues', 'linear:get-states',
   'settings:get', 'settings:set',
   'momtest:generate-questions',
 ] as const;
