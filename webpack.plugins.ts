@@ -17,5 +17,7 @@ export const plugins = [
     'process.env.GOOGLE_CLIENT_SECRET': JSON.stringify(env.parsed?.GOOGLE_CLIENT_SECRET || ''),
     'process.env.LINEAR_CLIENT_ID': JSON.stringify(env.parsed?.LINEAR_CLIENT_ID || ''),
     'process.env.LINEAR_CLIENT_SECRET': JSON.stringify(env.parsed?.LINEAR_CLIENT_SECRET || ''),
+    'process.env.ANTHROPIC_API_KEY': JSON.stringify(env.parsed?.ANTHROPIC_API_KEY || ''),
+    'process.env.ANTHROPIC_CHAT_MODEL': JSON.stringify(env.parsed?.ANTHROPIC_CHAT_MODEL || 'claude-sonnet-4-20250514'),
   }),
 ];

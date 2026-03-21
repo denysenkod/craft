@@ -5,9 +5,14 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 import { app, BrowserWindow } from 'electron';
 
 // These must be set before app.whenReady()
-app.commandLine.appendSwitch('disable-features', 'UsePortalFileChooser');
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+  app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform');
+  app.commandLine.appendSwitch('ozone-platform', 'wayland');
+  app.commandLine.appendSwitch('enable-transparent-visuals');
+  app.commandLine.appendSwitch('disable-features', 'UsePortalFileChooser,WaylandPresentationTime');
+} else {
+  app.commandLine.appendSwitch('disable-features', 'UsePortalFileChooser');
 }
 
 import { registerAllHandlers } from './ipc';

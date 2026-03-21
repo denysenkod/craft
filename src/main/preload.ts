@@ -12,11 +12,13 @@ const invokeChannels = [
   'google:auth', 'google:auth-status', 'google:logout',
   'calendar:list-events', 'calendar:create-event', 'calendar:send-bot', 'calendar:retry-bot', 'calendar:remove-meeting',
   'shell:open-external',
+  'meeting-chat:open', 'meeting-chat:send', 'meeting-chat:cancel', 'meeting-chat:refresh-tip',
   'momtest:generate-questions',
 ] as const;
 
 const listenChannels = [
   'chat:stream-event',
+  'meeting-chat:event',
 ] as const;
 
 type InvokeChannel = typeof invokeChannels[number];

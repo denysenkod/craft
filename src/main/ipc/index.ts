@@ -5,6 +5,7 @@ import { registerCalendarHandlers } from './calendar';
 import { registerMeetingHandlers } from './meetings';
 import { registerLinearHandlers } from './linear';
 import { registerChatHandlers } from './chat';
+import { openMeetingChat, registerMeetingChatHandlers } from '../services/meeting-chat';
 
 export function registerAllHandlers() {
   // Real settings handlers
@@ -46,6 +47,12 @@ export function registerAllHandlers() {
 
   // Chat handlers
   registerChatHandlers();
+
+  // Meeting chat floating window
+  ipcMain.handle('meeting-chat:open', async (_e, data: { eventId: string; title: string; meetingUrl: string | null }) => {
+    openMeetingChat(data.eventId, data.title, data.meetingUrl);
+  });
+  registerMeetingChatHandlers();
 
   console.log('IPC handlers registered');
 }

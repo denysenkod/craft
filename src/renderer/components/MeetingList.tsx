@@ -222,7 +222,9 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
     if (displayStatus === 'failed') {
       setExpandedErrorId(expandedErrorId === event.id ? null : event.id);
     } else if ((displayStatus === 'live' || displayStatus === 'recording' || displayStatus === 'bot_scheduled') && event.meetingUrl) {
+      // Open meeting in browser AND open floating chat window
       window.api.invoke('shell:open-external', event.meetingUrl);
+      window.api.invoke('meeting-chat:open', { eventId: event.id, title: event.summary, meetingUrl: event.meetingUrl });
     } else if (displayStatus === 'done') {
       onOpenTranscript(event.id, event.summary);
     }

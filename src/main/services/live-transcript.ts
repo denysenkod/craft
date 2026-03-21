@@ -19,6 +19,15 @@ interface LiveSession {
 // Active sessions keyed by google_event_id
 const sessions = new Map<string, LiveSession>();
 
+// Accumulated live transcript lines keyed by google_event_id
+const liveTranscriptLines = new Map<string, Array<{ speaker: string; text: string }>>();
+
+export function getLiveTranscript(eventId: string): string {
+  const lines = liveTranscriptLines.get(eventId);
+  if (!lines || lines.length === 0) return '';
+  return lines.map((l) => `${l.speaker}: ${l.text}`).join('\n');
+}
+
 function getCloudflaredPath(): string {
   return path.join(app.getPath('userData'), 'cloudflared');
 }
@@ -122,6 +131,11 @@ export async function startLiveTranscript(eventId: string): Promise<string> {
           console.log(`[transcript] (partial) ${speaker}: ${text}`);
         } else if (type === 'transcript.data') {
           console.log(`[transcript] ${speaker}: ${text}`);
+          // Store final lines for the chat agent
+          if (!liveTranscriptLines.has(eventId)) {
+            liveTranscriptLines.set(eventId, []);
+          }
+          liveTranscriptLines.get(eventId)!.push({ speaker, text });
         }
       } catch {
         // ignore parse errors
@@ -153,6 +167,7 @@ export function stopLiveTranscript(eventId: string): void {
   try { session.tunnelProcess.kill(); } catch { /* ignore */ }
   try { session.wss.close(); } catch { /* ignore */ }
   sessions.delete(eventId);
+  liveTranscriptLines.delete(eventId);
   console.log(`[live-transcript] Stopped session for ${eventId}`);
 }
 
