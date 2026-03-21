@@ -1,6 +1,7 @@
-import { ipcMain, shell, safeStorage } from 'electron';
+import { ipcMain, shell } from 'electron';
 import { LinearClient } from '@linear/sdk';
 import { getDb } from '../db';
+import { encrypt, decrypt } from '../services/secure-storage';
 import crypto from 'crypto';
 import http from 'http';
 
@@ -21,14 +22,9 @@ interface StoredTokens {
 
 function storeTokens(tokens: { access_token: string; refresh_token: string; expires_in: number }): void {
   const db = getDb();
-  const data = {
-    access_token_encrypted: safeStorage.encryptString(tokens.access_token).toString('base64'),
-    refresh_token_encrypted: safeStorage.encryptString(tokens.refresh_token).toString('base64'),
-    expires_at: Date.now() + tokens.expires_in * 1000,
-  };
   db.prepare(
     'INSERT OR REPLACE INTO auth (provider, access_token_encrypted, refresh_token_encrypted, expires_at) VALUES (?, ?, ?, ?)'
-  ).run('linear', data.access_token_encrypted, data.refresh_token_encrypted, data.expires_at);
+  ).run('linear', encrypt(tokens.access_token), encrypt(tokens.refresh_token), Date.now() + tokens.expires_in * 1000);
 }
 
 function loadTokens(): StoredTokens | null {
@@ -40,8 +36,8 @@ function loadTokens(): StoredTokens | null {
   } | undefined;
   if (!row) return null;
   return {
-    accessToken: safeStorage.decryptString(Buffer.from(row.access_token_encrypted, 'base64')),
-    refreshToken: safeStorage.decryptString(Buffer.from(row.refresh_token_encrypted, 'base64')),
+    accessToken: decrypt(row.access_token_encrypted),
+    refreshToken: decrypt(row.refresh_token_encrypted),
     expiresAt: row.expires_at,
   };
 }
@@ -144,6 +140,7 @@ async function startOAuthFlow(): Promise<{ success: boolean; error?: string }> {
       }
 
       try {
+        console.log('[linear] Exchanging code for tokens, client_id starts with:', CLIENT_ID.substring(0, 8));
         const tokens = await exchangeCodeForTokens(code);
         storeTokens(tokens);
         res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -151,8 +148,9 @@ async function startOAuthFlow(): Promise<{ success: boolean; error?: string }> {
         server.close();
         resolve({ success: true });
       } catch (err) {
+        console.error('[linear] Token exchange failed:', (err as Error).message);
         res.writeHead(500);
-        res.end('Token exchange failed.');
+        res.end('Token exchange failed: ' + (err as Error).message);
         server.close();
         resolve({ success: false, error: (err as Error).message });
       }

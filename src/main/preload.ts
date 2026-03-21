@@ -2,12 +2,16 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 const invokeChannels = [
   'meeting:create', 'meeting:list', 'meeting:get-status', 'meeting:paste-transcript',
+  'meeting:fetch-transcript',
   'transcript:get', 'transcript:analyze',
   'chat:send-message', 'chat:cancel', 'chat:get-history', 'chat:clear-history',
   'chat:approve-proposal', 'chat:reject-proposal',
   'task:list', 'task:create', 'task:update-status', 'task:push-to-linear',
   'linear:auth', 'linear:status', 'linear:disconnect', 'linear:get-teams', 'linear:get-issues', 'linear:get-states',
   'settings:get', 'settings:set',
+  'google:auth', 'google:auth-status', 'google:logout',
+  'calendar:list-events', 'calendar:create-event', 'calendar:send-bot', 'calendar:retry-bot', 'calendar:remove-meeting',
+  'shell:open-external',
   'momtest:generate-questions',
 ] as const;
 

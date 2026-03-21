@@ -20,15 +20,13 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [momTestOpen, setMomTestOpen] = useState(false);
-  const [transcriptId, setTranscriptId] = useState<string | undefined>();
-  const [meetingId, setMeetingId] = useState<string | undefined>();
+  const [selectedMeeting, setSelectedMeeting] = useState<{ id: string; title: string } | null>(null);
   const [taskVersion, setTaskVersion] = useState(0);
 
-  const context: CurrentContext = { screen, transcriptId, meetingId };
+  const context: CurrentContext = { screen, meetingId: selectedMeeting?.id };
 
-  const handleOpenTranscript = (tId: string, mId: string) => {
-    setTranscriptId(tId);
-    setMeetingId(mId);
+  const openTranscript = (meetingId: string, meetingTitle: string) => {
+    setSelectedMeeting({ id: meetingId, title: meetingTitle });
     setScreen('transcript');
   };
 
@@ -49,12 +47,16 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden bg-surface-1" style={{ marginTop: '40px' }}>
         {screen === 'meetings' && (
           <MeetingList
-            onOpenTranscript={handleOpenTranscript}
+            onOpenTranscript={openTranscript}
             onOpenMomTest={() => setMomTestOpen(true)}
           />
         )}
         {screen === 'transcript' && (
-          <TranscriptView onOpenChat={() => setChatOpen(true)} />
+          <TranscriptView
+            meetingId={selectedMeeting?.id || null}
+            meetingTitle={selectedMeeting?.title || 'Transcript'}
+            onOpenChat={() => setChatOpen(true)}
+          />
         )}
         {screen === 'tasks' && <TaskReview refreshKey={taskVersion} />}
       </div>

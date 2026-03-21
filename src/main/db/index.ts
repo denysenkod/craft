@@ -11,6 +11,13 @@ export function initDb(): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+
+  // Migrate: add error_message column if missing (added after initial schema)
+  const cols = db.pragma('table_info(meeting_bots)') as Array<{ name: string }>;
+  if (cols.length > 0 && !cols.some((c) => c.name === 'error_message')) {
+    db.exec('ALTER TABLE meeting_bots ADD COLUMN error_message TEXT');
+  }
+
   return db;
 }
 

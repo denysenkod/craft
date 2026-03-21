@@ -46,4 +46,12 @@ export const SCHEMA = `
     refresh_token_encrypted TEXT NOT NULL,
     expires_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS meeting_bots (
+    google_event_id TEXT PRIMARY KEY,
+    recall_bot_id TEXT,
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;

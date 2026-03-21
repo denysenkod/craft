@@ -3,8 +3,17 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 import { app, BrowserWindow } from 'electron';
+
+// These must be set before app.whenReady()
+app.commandLine.appendSwitch('disable-features', 'UsePortalFileChooser');
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+}
+
 import { registerAllHandlers } from './ipc';
 import { initDb, migrate } from './db';
+import { stopAllLiveTranscripts } from './services/live-transcript';
+
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -37,6 +46,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  stopAllLiveTranscripts();
   if (process.platform !== 'darwin') app.quit();
 });
 
