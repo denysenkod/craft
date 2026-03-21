@@ -68,7 +68,7 @@ export default function TranscriptView({ meetingId, meetingTitle, onTranscriptLo
     }
   };
 
-  // Build speaker color map
+  // Build speaker color map and extract unique attendees
   const speakerColorMap = new Map<string, string>();
   for (const entry of transcript) {
     const name = entry.participant?.name || 'Unknown';
@@ -76,12 +76,33 @@ export default function TranscriptView({ meetingId, meetingTitle, onTranscriptLo
       speakerColorMap.set(name, SPEAKER_COLORS[speakerColorMap.size % SPEAKER_COLORS.length]);
     }
   }
+  const attendees = Array.from(speakerColorMap.keys());
+
+  // Extract meeting date from first word's absolute timestamp
+  const meetingDate = transcript[0]?.words?.[0]?.start_timestamp?.absolute
+    ? new Date(transcript[0].words[0].start_timestamp.absolute).toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+      })
+    : null;
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
       <div className="px-7 py-4 border-b border-border-base shrink-0 bg-surface-0">
         <div className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted">Transcript</div>
         <div className="text-[15px] font-medium text-text-primary mt-0.5">{meetingTitle}</div>
+        {(meetingDate || attendees.length > 0) && (
+          <div className="flex items-center gap-3 mt-1.5 text-[12px] text-text-muted">
+            {meetingDate && (
+              <span>{meetingDate}</span>
+            )}
+            {meetingDate && attendees.length > 0 && (
+              <span className="text-border-base">|</span>
+            )}
+            {attendees.length > 0 && (
+              <span>{attendees.join(', ')}</span>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading && (
