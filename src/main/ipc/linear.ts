@@ -256,33 +256,59 @@ export function registerLinearHandlers() {
   ipcMain.handle('linear:get-issues', async (_e, { teamId }: { teamId?: string } = {}) => {
     const client = await getLinearClient();
 
-    let issues: any;
+    let team: any;
     if (teamId) {
-      const team = await client.team(teamId);
-      issues = await (team as any).issues({ first: 100, orderBy: 'updatedAt' });
+      team = await client.team(teamId);
     } else {
-      // Default: fetch from first team
       const teams = await client.teams();
       if (teams.nodes.length === 0) return [];
-      const team = teams.nodes[0];
-      issues = await (team as any).issues({ first: 100, orderBy: 'updatedAt' });
+      team = teams.nodes[0];
     }
+
+    const issues = await team.issues({ first: 100, orderBy: 'updatedAt' });
 
     const results = [];
     for (const issue of issues.nodes) {
       const state = await issue.state;
       const assignee = await issue.assignee;
+
+      // Resolve relations
+      let blockedBy: { id: string; identifier: string; title: string }[] = [];
+      let blocking: { id: string; identifier: string; title: string }[] = [];
+      try {
+        const inverseRels = await issue.inverseRelations();
+        for (const rel of inverseRels.nodes) {
+          if (rel.type === 'blocks') {
+            const blocker = await rel.issue;
+            blockedBy.push({ id: blocker.id, identifier: blocker.identifier, title: blocker.title });
+          }
+        }
+        const rels = await issue.relations();
+        for (const rel of rels.nodes) {
+          if (rel.type === 'blocks') {
+            const blocked = await rel.relatedIssue;
+            blocking.push({ id: blocked.id, identifier: blocked.identifier, title: blocked.title });
+          }
+        }
+      } catch {
+        // Relations may not be available — continue without them
+      }
+
       results.push({
         id: issue.id,
         identifier: issue.identifier,
         title: issue.title,
         description: issue.description,
+        statusId: state?.id || '',
         status: state?.name || 'Unknown',
+        statusType: state?.type || 'backlog',
         statusColor: state?.color || '#5E5B54',
         priority: issue.priority,
         priorityLabel: issue.priorityLabel,
         assigneeName: assignee?.name || null,
         assigneeInitials: assignee?.name ? assignee.name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : null,
+        blockedBy,
+        blocking,
         url: issue.url,
         createdAt: issue.createdAt,
         updatedAt: issue.updatedAt,
