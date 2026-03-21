@@ -42,7 +42,7 @@ export function migrate() {
           content TEXT NOT NULL,
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
-        INSERT INTO chat_messages_new SELECT * FROM chat_messages;
+        INSERT INTO chat_messages_new(id, transcript_id, role, content, created_at) SELECT id, transcript_id, role, content, created_at FROM chat_messages;
         DROP TABLE chat_messages;
         ALTER TABLE chat_messages_new RENAME TO chat_messages;
 
@@ -56,7 +56,7 @@ export function migrate() {
           source TEXT NOT NULL DEFAULT 'auto',
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
-        INSERT INTO tasks_new SELECT * FROM tasks;
+        INSERT INTO tasks_new(id, transcript_id, title, description, status, linear_issue_id, source, created_at) SELECT id, transcript_id, title, description, status, linear_issue_id, source, created_at FROM tasks;
         DROP TABLE tasks;
         ALTER TABLE tasks_new RENAME TO tasks;
       `);
@@ -73,9 +73,20 @@ export function migrate() {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`);
 
-      db.exec(`ALTER TABLE chat_messages ADD COLUMN session_id TEXT REFERENCES chat_sessions(id) ON DELETE CASCADE`);
-      db.exec(`ALTER TABLE transcripts ADD COLUMN transcript_json TEXT`);
-      db.exec(`ALTER TABLE meeting_bots ADD COLUMN transcript_id TEXT`);
+      const chatCols = db.pragma('table_info(chat_messages)') as Array<{ name: string }>;
+      if (!chatCols.some(c => c.name === 'session_id')) {
+        db.exec(`ALTER TABLE chat_messages ADD COLUMN session_id TEXT REFERENCES chat_sessions(id) ON DELETE CASCADE`);
+      }
+
+      const transcriptCols = db.pragma('table_info(transcripts)') as Array<{ name: string }>;
+      if (!transcriptCols.some(c => c.name === 'transcript_json')) {
+        db.exec(`ALTER TABLE transcripts ADD COLUMN transcript_json TEXT`);
+      }
+
+      const botCols = db.pragma('table_info(meeting_bots)') as Array<{ name: string }>;
+      if (!botCols.some(c => c.name === 'transcript_id')) {
+        db.exec(`ALTER TABLE meeting_bots ADD COLUMN transcript_id TEXT`);
+      }
 
       db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)`);
 
