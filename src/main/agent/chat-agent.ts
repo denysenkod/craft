@@ -24,20 +24,23 @@ function emit(win: BrowserWindow, event: Record<string, unknown>) {
   }
 }
 
-function loadHistory(): ChatMessage[] {
+function loadHistory(sessionId: string): ChatMessage[] {
   const db = getDb();
   const rows = db.prepare(
-    'SELECT id, role, content, created_at FROM chat_messages ORDER BY created_at DESC LIMIT ?'
-  ).all(MAX_HISTORY_MESSAGES) as ChatMessage[];
+    'SELECT id, role, content, created_at FROM chat_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ?'
+  ).all(sessionId, MAX_HISTORY_MESSAGES) as ChatMessage[];
   return rows.reverse();
 }
 
-function saveMessage(role: 'user' | 'assistant', content: string): string {
+function saveMessage(role: 'user' | 'assistant', content: string, sessionId: string): string {
   const db = getDb();
   const id = uuid();
   db.prepare(
-    'INSERT INTO chat_messages (id, role, content, created_at) VALUES (?, ?, ?, datetime(\'now\'))'
-  ).run(id, role, content);
+    'INSERT INTO chat_messages (id, role, content, session_id, created_at) VALUES (?, ?, ?, ?, datetime(\'now\'))'
+  ).run(id, role, content, sessionId);
+  db.prepare(
+    'UPDATE chat_sessions SET updated_at = datetime(\'now\') WHERE id = ?'
+  ).run(sessionId);
   return id;
 }
 
@@ -45,22 +48,17 @@ function buildMessages(
   history: ChatMessage[],
   userMessage: string,
   context: CurrentContext,
-  transcriptContent?: string,
-  analysisJson?: string
+  transcriptContent?: string
 ): Anthropic.MessageParam[] {
   const messages: Anthropic.MessageParam[] = [];
 
-  // Convert history to API format
   for (const msg of history) {
     messages.push({ role: msg.role, content: msg.content });
   }
 
-  // Build current user message — inject transcript + analysis if provided
   let content = userMessage;
   if (transcriptContent && context.transcriptId) {
-    content = `<reference_transcript>\n${transcriptContent}\n</reference_transcript>\n\n`
-      + (analysisJson ? `<reference_analysis>\n${analysisJson}\n</reference_analysis>\n\n` : '')
-      + userMessage;
+    content = `<reference_transcript>\n${transcriptContent}\n</reference_transcript>\n\n` + userMessage;
   }
   messages.push({ role: 'user', content });
 
@@ -71,21 +69,21 @@ export async function runAgent(
   win: BrowserWindow,
   userMessage: string,
   context: CurrentContext,
-  transcriptContent?: string,
-  analysisJson?: string
+  sessionId: string,
+  transcriptContent?: string
 ): Promise<void> {
   abortController = new AbortController();
   const signal = abortController.signal;
 
   const client = new Anthropic();
   const systemPrompt = buildSystemPrompt(context);
-  const history = loadHistory();
+  const history = loadHistory(sessionId);
 
   // Save user message
-  saveMessage('user', userMessage);
+  saveMessage('user', userMessage, sessionId);
 
   // Build messages array
-  let messages = buildMessages(history, userMessage, context, transcriptContent, analysisJson);
+  let messages = buildMessages(history, userMessage, context, transcriptContent);
 
   emit(win, { type: 'thinking' });
 
@@ -152,11 +150,13 @@ export async function runAgent(
 
         const result = await executeTool(block.name, block.input as Record<string, unknown>);
 
-        // Collect proposals
-        if (block.name === 'create_task' || block.name === 'update_task') {
-          const proposal = result as Proposal;
-          if (proposal.proposal_id) {
-            collectedProposals.push(proposal);
+        // Collect proposals (only when not auto-executed)
+        if (block.name === 'create_task' || block.name === 'update_task' || block.name === 'delete_task') {
+          const resultObj = result as Record<string, unknown>;
+          if (resultObj.auto_executed) {
+            emit(win, { type: 'task_changed' });
+          } else if (resultObj.proposal_id) {
+            collectedProposals.push(result as Proposal);
           }
         }
 
@@ -184,7 +184,7 @@ export async function runAgent(
       ? JSON.stringify({ text: fullResponse, proposals: collectedProposals })
       : fullResponse;
 
-    const messageId = saveMessage('assistant', messageContent);
+    const messageId = saveMessage('assistant', messageContent, sessionId);
 
     // Emit proposals if any
     if (collectedProposals.length > 0) {
@@ -196,7 +196,7 @@ export async function runAgent(
     if (signal.aborted) {
       // Save partial response on cancel
       if (fullResponse) {
-        const messageId = saveMessage('assistant', fullResponse);
+        const messageId = saveMessage('assistant', fullResponse, sessionId);
         emit(win, { type: 'done', message_id: messageId });
       }
     } else {
