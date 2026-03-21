@@ -60,7 +60,7 @@ export function migrate() {
         DROP TABLE tasks;
         ALTER TABLE tasks_new RENAME TO tasks;
       `);
-      db.pragma(`user_version = ${CURRENT_VERSION}`);
+      db.pragma('user_version = 1');
     })();
   }
 
