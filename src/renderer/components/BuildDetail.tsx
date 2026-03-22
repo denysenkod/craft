@@ -1,6 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
 import BuildChat from './BuildChat';
 
+/** Render basic inline markdown: **bold**, `code`, and newlines */
+function renderMarkdown(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*.*?\*\*|`[^`]+`|\n)/g);
+  return parts.map((part, i) => {
+    if (part === '\n') return <br key={i} />;
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="font-semibold text-text-primary">{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return <code key={i} className="px-1 py-0.5 bg-surface-3 rounded text-honey">{part.slice(1, -1)}</code>;
+    }
+    return part;
+  });
+}
+
 interface BuildEvent {
   id: string;
   type: string;
@@ -130,7 +145,7 @@ export default function BuildDetail({ build, onCancel, onRetry }: BuildDetailPro
               <span className="text-xs text-text-muted">{build.files_changed} files changed</span>
             </div>
             {build.summary && (
-              <p className="text-xs text-text-secondary mb-3">{build.summary.slice(0, 300)}</p>
+              <p className="text-xs text-text-secondary mb-3">{renderMarkdown(build.summary)}</p>
             )}
             {build.pr_url && (
               <button
@@ -184,7 +199,7 @@ export default function BuildDetail({ build, onCancel, onRetry }: BuildDetailPro
                   }}
                 />
                 <span className={`text-xs ${isError ? 'text-red-400' : isQuestion ? 'text-honey' : 'text-text-primary'}`}>
-                  {event.content}
+                  {renderMarkdown(event.content)}
                 </span>
               </div>
             );
