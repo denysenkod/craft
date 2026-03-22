@@ -200,23 +200,6 @@ Begin.`;
           emitEvent(buildId, 'progress', summary);
         }
 
-        // Tool progress — emitted while a tool is running
-        if (message.type === 'tool_progress') {
-          const toolMsg = message as any;
-          emitEvent(buildId, 'progress', `Running ${toolMsg.tool_name}...`);
-        }
-
-        // Streaming chunks — real-time text as Claude generates
-        if (message.type === 'stream_event') {
-          const streamMsg = message as any;
-          const event = streamMsg.event;
-          // content_block_start with tool_use shows what tool is being called
-          if (event?.type === 'content_block_start' && event?.content_block?.type === 'tool_use') {
-            const toolName = event.content_block.name || '';
-            emitEvent(buildId, 'progress', `Using ${toolName}`);
-          }
-        }
-
         // Full assistant messages — track text for Q&A detection
         if (message.type === 'assistant') {
           const assistantMsg = message as SDKAssistantMessage;
@@ -251,8 +234,6 @@ Begin.`;
           }
           if (textBlocks.length > 0) {
             lastAssistantText = textBlocks.join('\n');
-            const preview = lastAssistantText.substring(0, 200);
-            emitEvent(buildId, 'progress', preview);
           }
           currentSessionId = assistantMsg.session_id;
         }
