@@ -65,4 +65,38 @@ export const SCHEMA = `
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS contacts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    job_title TEXT,
+    project TEXT,
+    profile_summary TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS meeting_attendees (
+    id TEXT PRIMARY KEY,
+    google_event_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL REFERENCES contacts(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(google_event_id, contact_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS meeting_prep_notes (
+    id TEXT PRIMARY KEY,
+    google_event_id TEXT NOT NULL UNIQUE,
+    notes_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS prep_chat_messages (
+    id TEXT PRIMARY KEY,
+    google_event_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;

@@ -66,6 +66,7 @@ export function migrate() {
 
   if (version < 2) {
     db.transaction(() => {
+      // Upstream: chat sessions, transcript_json, meeting_bots transcript_id
       db.exec(`CREATE TABLE IF NOT EXISTS chat_sessions (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL DEFAULT 'New chat',
@@ -89,6 +90,23 @@ export function migrate() {
       }
 
       db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)`);
+
+      // Seed mock contacts
+      const contacts = [
+        { id: 'c-001', name: 'Sarah Chen', email: 'sarah.chen@acmecorp.com', job_title: 'VP of Sales', project: 'Enterprise Onboarding' },
+        { id: 'c-002', name: 'Marcus Rivera', email: 'marcus@riveratech.io', job_title: 'CTO', project: 'Platform API' },
+        { id: 'c-003', name: 'Lena Kowalski', email: 'lena.k@dataflow.co', job_title: 'Product Manager', project: 'API Integration' },
+        { id: 'c-004', name: 'Tom Nguyen', email: 'tom.nguyen@designlabs.com', job_title: 'Head of Design', project: 'Dashboard Redesign' },
+        { id: 'c-005', name: 'Priya Sharma', email: 'priya@cloudnine.dev', job_title: 'Engineering Lead', project: 'Infrastructure' },
+        { id: 'c-006', name: 'James O\'Brien', email: 'james.obrien@finserv.com', job_title: 'Customer Success Manager', project: 'Enterprise Onboarding' },
+        { id: 'c-007', name: 'Ana Petrov', email: 'ana.petrov@startupxyz.com', job_title: 'CEO', project: 'Partnership' },
+        { id: 'c-008', name: 'David Kim', email: 'dkim@megacorp.co', job_title: 'Director of Engineering', project: 'Platform API' },
+      ];
+
+      const stmt = db.prepare('INSERT OR IGNORE INTO contacts (id, name, email, job_title, project) VALUES (?, ?, ?, ?, ?)');
+      for (const c of contacts) {
+        stmt.run(c.id, c.name, c.email, c.job_title, c.project);
+      }
 
       db.pragma('user_version = 2');
     })();

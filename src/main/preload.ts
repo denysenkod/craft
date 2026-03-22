@@ -14,12 +14,16 @@ const invokeChannels = [
   'calendar:list-events', 'calendar:create-event', 'calendar:send-bot', 'calendar:retry-bot', 'calendar:remove-meeting',
   'shell:open-external',
   'meeting-chat:open', 'meeting-chat:send', 'meeting-chat:cancel', 'meeting-chat:refresh-tip',
+  'contacts:list', 'contacts:get', 'contacts:create', 'contacts:update', 'contacts:get-by-email',
+  'prep:get-notes', 'prep:save-notes', 'prep:get-attendees', 'prep:set-attendees',
+  'prep-chat:send', 'prep-chat:cancel', 'prep-chat:get-history', 'prep-chat:clear-history',
   'momtest:generate-questions',
 ] as const;
 
 const listenChannels = [
   'chat:stream-event',
   'meeting-chat:event',
+  'prep-chat:stream-event',
 ] as const;
 
 type InvokeChannel = typeof invokeChannels[number];

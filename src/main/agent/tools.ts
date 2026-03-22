@@ -114,4 +114,26 @@ export const AGENT_TOOLS: Tool[] = [
       required: ['task_id', 'reason'],
     },
   },
+  {
+    name: 'get_contact',
+    description: 'Look up a contact/person by name or email. Returns their profile, job title, project, and conversation history summary.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string' as const, description: 'Name or email to search for' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'list_contacts',
+    description: 'List all known contacts/people the user has interacted with.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: { type: 'number' as const, description: 'Max results (default 20)' },
+      },
+      required: [],
+    },
+  },
 ];

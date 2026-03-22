@@ -177,6 +177,21 @@ export async function executeTool(name: string, input: Record<string, unknown>):
       }
     }
 
+    case 'get_contact': {
+      const db = getDb();
+      const query = `%${(input.query as string).toLowerCase()}%`;
+      const rows = db.prepare(
+        'SELECT * FROM contacts WHERE LOWER(name) LIKE ? OR LOWER(email) LIKE ? LIMIT 5'
+      ).all(query, query);
+      return rows.length > 0 ? rows : { error: 'No contacts found matching that query' };
+    }
+
+    case 'list_contacts': {
+      const db = getDb();
+      const limit = (input.limit as number) || 20;
+      return db.prepare('SELECT * FROM contacts ORDER BY updated_at DESC LIMIT ?').all(limit);
+    }
+
     default:
       return { error: `Unknown tool: ${name}` };
   }

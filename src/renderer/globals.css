@@ -2,24 +2,57 @@
 
 @theme {
   --color-surface-0: #07070A;
-  --color-surface-1: #0D0D12;
-  --color-surface-2: #141419;
-  --color-surface-3: #1C1C22;
-  --color-surface-4: #24242C;
+  --color-surface-1: #0F0F14;
+  --color-surface-2: #16161C;
+  --color-surface-3: #1E1E26;
+  --color-surface-4: #28282F;
   --color-honey: #E8A838;
   --color-honey-dim: #C48A2A;
-  --color-border-base: #2A2A32;
-  --color-border-strong: #3A3A44;
+  --color-border-base: #25252D;
+  --color-border-strong: #35353F;
   --color-text-primary: #F0EDE8;
-  --color-text-secondary: #9C9890;
-  --color-text-muted: #5E5B54;
+  --color-text-secondary: #A09A92;
+  --color-text-muted: #6A665E;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 }
 
 body {
   background: var(--color-surface-0);
   color: var(--color-text-primary);
-  font-family: 'Instrument Sans', sans-serif;
+  font-family: 'Instrument Sans', -apple-system, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
   margin: 0;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Global rounded corners for inputs, buttons, cards */
+input, textarea, select, button {
+  border-radius: var(--radius-sm);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }

@@ -2,6 +2,8 @@ import { ipcMain } from 'electron';
 import { listEvents, createEvent, getEvent } from '../services/google-calendar';
 import { scheduleBot, getBotStatus, mapBotStatus } from '../services/recall';
 import { startLiveTranscript, stopLiveTranscript } from '../services/live-transcript';
+import { updateAttendeeProfiles } from '../services/profile-updater';
+import { v4 as uuid } from 'uuid';
 import { getDb } from '../db';
 
 export function registerCalendarHandlers() {
@@ -35,9 +37,26 @@ export function registerCalendarHandlers() {
               if (newStatus === 'done' || newStatus === 'failed') {
                 stopLiveTranscript(event.id);
               }
+              // Trigger profile updates when recording completes
+              if (newStatus === 'done') {
+                updateAttendeeProfiles(event.id).catch((err) =>
+                  console.error(`[profile] Update failed for ${event.id}:`, (err as Error).message)
+                );
+              }
             }
           } catch (err: unknown) {
             console.error(`Failed to sync bot status for ${event.id}:`, (err as Error).message);
+          }
+        }
+
+        // Auto-link attendees to contacts
+        if (event.attendees && event.attendees.length > 0) {
+          for (const att of event.attendees) {
+            const contact = db.prepare('SELECT id FROM contacts WHERE email = ?').get(att.email.toLowerCase()) as { id: string } | undefined;
+            if (contact) {
+              db.prepare('INSERT OR IGNORE INTO meeting_attendees (id, google_event_id, contact_id) VALUES (?, ?, ?)')
+                .run(uuid(), event.id, contact.id);
+            }
           }
         }
 

@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import AttendeeInput from './AttendeeInput';
+import CalendarDayView from './CalendarDayView';
+import MeetingPrepOverlay from './MeetingPrepOverlay';
+import DatePicker from './DatePicker';
+import TimePicker from './TimePicker';
 
 declare global {
   interface Window {
@@ -57,9 +62,9 @@ function StatusBadge({ status }: { status: string }) {
   };
   const s = styles[status] || styles.past;
   return (
-    <span className="font-mono text-[10px] font-medium uppercase tracking-wider" style={{ color: s.color, textDecoration: s.strike ? 'line-through' : undefined }}>
+    <span className="text-xs font-medium" style={{ color: s.color, textDecoration: s.strike ? 'line-through' : undefined }}>
       {s.dot && (
-        <span className="inline-block w-[5px] h-[5px] rounded-full mr-1 animate-pulse" style={{ background: s.color }} />
+        <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 animate-pulse" style={{ background: s.color }} />
       )}
       {!s.dot && status === 'done' && <span>&#10003; </span>}
       {s.label}
@@ -91,13 +96,11 @@ function pad2(n: number): string {
 
 function getDefaultFormValues() {
   const now = new Date();
-  const end = new Date(now.getTime() + 2 * 60 * 1000);
   return {
     title: 'Test Meeting',
-    attendees: '',
     date: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`,
     startTime: `${pad2(now.getHours())}:${pad2(now.getMinutes())}`,
-    endTime: `${pad2(end.getHours())}:${pad2(end.getMinutes())}`,
+    duration: '30',
   };
 }
 
@@ -110,11 +113,14 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [attendees, setAttendees] = useState('');
+  const [attendees, setAttendees] = useState<Array<{ email: string; name?: string; contactId?: string }>>([]);
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const [duration, setDuration] = useState('30');
   const [scheduling, setScheduling] = useState(false);
+  const [showDayView, setShowDayView] = useState(false);
+  const [showPrepOverlay, setShowPrepOverlay] = useState(false);
+  const [selectedPrepEvent, setSelectedPrepEvent] = useState<CalendarEvent | null>(null);
 
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
   const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set());
@@ -148,33 +154,38 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
   const openScheduleForm = () => {
     const defaults = getDefaultFormValues();
     setTitle(defaults.title);
-    setAttendees(defaults.attendees);
+    setAttendees([]);
     setDate(defaults.date);
     setStartTime(defaults.startTime);
-    setEndTime(defaults.endTime);
+    setDuration(defaults.duration);
     setDescription('');
     setShowScheduleForm(true);
     setShowPasteForm(false);
   };
 
   const handleSchedule = async () => {
-    if (!title || !date || !startTime || !endTime) return;
+    if (!title || !date || !startTime) return;
     setScheduling(true);
     try {
-      const startDateTime = new Date(`${date}T${startTime}`).toISOString();
-      const endDateTime = new Date(`${date}T${endTime}`).toISOString();
-      const attendeeList = attendees
-        .split(',')
-        .map((e) => e.trim())
-        .filter(Boolean);
+      const startDate = new Date(`${date}T${startTime}`);
+      const endDate = new Date(startDate.getTime() + parseInt(duration) * 60 * 1000);
+      const startDateTime = startDate.toISOString();
+      const endDateTime = endDate.toISOString();
+      const attendeeList = attendees.map((a) => a.email).filter(Boolean);
 
-      await window.api.invoke('calendar:create-event', {
+      const result = await window.api.invoke('calendar:create-event', {
         title,
         description,
         attendees: attendeeList,
         startDateTime,
         endDateTime,
-      });
+      }) as CalendarEvent;
+
+      // Link attendees with contact IDs to the event
+      const contactIds = attendees.filter((a) => a.contactId).map((a) => a.contactId!);
+      if (contactIds.length > 0 && result?.id) {
+        await window.api.invoke('prep:set-attendees', { googleEventId: result.id, contactIds });
+      }
 
       setShowScheduleForm(false);
       await loadEvents();
@@ -222,11 +233,14 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
     if (displayStatus === 'failed') {
       setExpandedErrorId(expandedErrorId === event.id ? null : event.id);
     } else if ((displayStatus === 'live' || displayStatus === 'recording' || displayStatus === 'bot_scheduled') && event.meetingUrl) {
-      // Open meeting in browser AND open floating chat window
       window.api.invoke('shell:open-external', event.meetingUrl);
       window.api.invoke('meeting-chat:open', { eventId: event.id, title: event.summary, meetingUrl: event.meetingUrl });
     } else if (displayStatus === 'done') {
       onOpenTranscript(event.id, event.summary);
+    } else if (displayStatus === 'scheduled') {
+      // Future event without bot — open prep overlay
+      setSelectedPrepEvent(event);
+      setShowPrepOverlay(true);
     }
   };
 
@@ -248,21 +262,18 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
     }
   };
 
-  const inputClass = 'font-mono text-xs px-3 py-2.5 bg-surface-2 border border-border-base text-text-primary outline-none focus:border-honey/30';
+  const inputClass = 'text-sm px-3.5 py-2.5 bg-surface-2 border border-border-base text-text-primary outline-none focus:border-honey/30 rounded-lg';
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Header */}
-      <div className="px-12 pt-10 pb-8 flex items-end justify-between">
+      <div className="px-10 pt-8 pb-6 flex items-end justify-between">
         <div>
-          <h1 className="text-4xl font-light italic text-text-primary" style={{ fontFamily: "'Instrument Sans', sans-serif" }}>Meetings</h1>
-          <p className="font-mono text-[10px] text-text-muted uppercase tracking-[0.12em] mt-2">Google Calendar events & bot scheduling</p>
+          <h1 className="text-3xl font-semibold text-text-primary tracking-tight">Meetings</h1>
+          <p className="text-sm text-text-muted mt-1">Google Calendar events & bot scheduling</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={onOpenMomTest} className="font-mono text-[11px] font-medium px-4 py-2 border border-border-strong bg-surface-3 text-text-secondary uppercase tracking-wider hover:border-honey hover:text-honey transition-all">
-            Prepare Questions
-          </button>
-          <button onClick={showScheduleForm ? () => setShowScheduleForm(false) : openScheduleForm} className="font-mono text-[11px] font-semibold px-4 py-2 bg-honey text-surface-0 border border-honey uppercase tracking-wider hover:bg-honey-dim transition-all">
+        <div className="flex gap-2.5">
+          <button onClick={showScheduleForm ? () => setShowScheduleForm(false) : openScheduleForm} className="text-sm font-semibold px-5 py-2.5 bg-honey text-surface-0 rounded-lg hover:bg-honey-dim transition-all">
             + Schedule Meeting
           </button>
         </div>
@@ -270,30 +281,44 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
 
       {/* Schedule Form */}
       {showScheduleForm && (
-        <div className="mx-12 pb-6 border-b border-border-strong">
-          <div className="flex gap-2 mb-2">
+        <div className="mx-10 pb-6 mb-2 border-b border-border-base">
+          <div className="flex gap-2.5 mb-2.5">
             <input className={`flex-1 ${inputClass}`} placeholder="Meeting title" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
-          <div className="mb-2">
+          <div className="mb-2.5">
             <textarea className={`w-full ${inputClass} resize-none h-16`} placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <div className="flex gap-2 mb-2">
-            <input className={`flex-1 ${inputClass}`} placeholder="Attendee emails (comma-separated)" value={attendees} onChange={(e) => setAttendees(e.target.value)} />
+          <div className="mb-2.5">
+            <label className="block text-xs font-medium text-text-muted mb-1.5">Attendees</label>
+            <AttendeeInput attendees={attendees} onChange={setAttendees} />
           </div>
-          <div className="flex gap-2 mb-3">
-            <input type="date" className={inputClass} value={date} onChange={(e) => setDate(e.target.value)} />
-            <input type="time" className={inputClass} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-            <input type="time" className={inputClass} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          <div className="flex gap-2.5 mb-4 items-start">
+            <DatePicker value={date} onChange={setDate} />
+            <TimePicker value={startTime} onChange={setStartTime} />
+            <select className={`${inputClass} cursor-pointer`} value={duration} onChange={(e) => setDuration(e.target.value)}>
+              <option value="15">15 min</option>
+              <option value="30">30 min</option>
+              <option value="45">45 min</option>
+              <option value="60">1 hour</option>
+              <option value="90">1.5 hours</option>
+              <option value="120">2 hours</option>
+            </select>
+            <button
+              onClick={() => setShowDayView(true)}
+              className="text-xs font-medium px-3.5 py-2.5 border border-border-strong bg-surface-3 text-text-secondary rounded-lg hover:border-honey hover:text-honey transition-all whitespace-nowrap"
+            >
+              View Day
+            </button>
           </div>
-          <div className="flex gap-2">
-            <button onClick={handleSchedule} disabled={scheduling || !title || !date || !startTime || !endTime} className="font-mono text-[11px] font-semibold px-4 py-2 bg-honey text-surface-0 border border-honey uppercase tracking-wider hover:bg-honey-dim transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+          <div className="flex gap-2.5">
+            <button onClick={handleSchedule} disabled={scheduling || !title || !date || !startTime} className="text-sm font-semibold px-5 py-2.5 bg-honey text-surface-0 rounded-lg hover:bg-honey-dim transition-all disabled:opacity-40 disabled:cursor-not-allowed">
               {scheduling ? 'Scheduling...' : 'Schedule'}
             </button>
-            <button onClick={() => setShowScheduleForm(false)} className="font-mono text-[11px] font-medium px-4 py-2 border border-border-strong bg-surface-3 text-text-secondary uppercase tracking-wider hover:border-honey hover:text-honey transition-all">
+            <button onClick={() => setShowScheduleForm(false)} className="text-sm font-medium px-4 py-2.5 border border-border-strong bg-surface-3 text-text-secondary rounded-lg hover:border-honey hover:text-honey transition-all">
               Cancel
             </button>
             <div className="flex-1" />
-            <button onClick={() => { setShowPasteForm(!showPasteForm); setShowScheduleForm(false); }} className="font-mono text-[11px] text-text-muted underline underline-offset-2 hover:text-honey transition-colors">
+            <button onClick={() => { setShowPasteForm(!showPasteForm); setShowScheduleForm(false); }} className="text-xs text-text-muted underline underline-offset-2 hover:text-honey transition-colors">
               paste transcript
             </button>
           </div>
@@ -315,30 +340,30 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
       )}
 
       {/* Table */}
-      <div className="px-12 pb-12 overflow-y-auto flex-1">
+      <div className="px-10 pb-10 overflow-y-auto flex-1">
         {loading && (
           <div className="py-12 text-center">
-            <p className="font-mono text-xs text-text-muted">Loading calendar events...</p>
+            <p className="text-sm text-text-muted">Loading calendar events...</p>
           </div>
         )}
         {error && (
           <div className="py-12 text-center">
-            <p className="font-mono text-xs text-text-muted">{error}</p>
+            <p className="text-sm text-text-muted">{error}</p>
             <button onClick={() => loadEvents()} className="font-mono text-[11px] text-honey underline mt-2">Retry</button>
           </div>
         )}
         {!loading && !error && events.length === 0 && (
           <div className="py-12 text-center">
-            <p className="font-mono text-xs text-text-muted">No calendar events found.</p>
+            <p className="text-sm text-text-muted">No calendar events found.</p>
           </div>
         )}
         {!loading && !error && events.length > 0 && (
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted text-left py-3.5 border-b border-border-strong" style={{ width: '36%' }}>Meeting</th>
-                <th className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted text-left py-3.5 border-b border-border-strong">Attendees</th>
-                <th className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted text-left py-3.5 border-b border-border-strong">Date / Time</th>
+                <th className="text-xs font-medium text-text-muted text-left py-3 border-b border-border-base" style={{ width: '36%' }}>Meeting</th>
+                <th className="text-xs font-medium text-text-muted text-left py-3.5 border-b border-border-base">Attendees</th>
+                <th className="text-xs font-medium text-text-muted text-left py-3.5 border-b border-border-base">Date / Time</th>
                 <th className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted text-right py-3.5 border-b border-border-strong">Status</th>
                 <th className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-text-muted text-right py-3.5 border-b border-border-strong" style={{ width: '140px' }}></th>
               </tr>
@@ -355,28 +380,28 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
                       className="cursor-pointer transition-colors hover:bg-surface-2"
                       onClick={() => handleRowClick(event, displayStatus)}
                     >
-                      <td className="py-4.5 border-b border-border-base">
-                        <div className="text-[15px] font-medium text-text-primary">{event.summary}</div>
+                      <td className="py-4 border-b border-border-base">
+                        <div className="text-sm font-medium text-text-primary">{event.summary}</div>
                         {event.meetingUrl && (
-                          <div className="font-mono text-[11px] text-text-muted mt-0.5 truncate max-w-[300px]">{event.meetingUrl}</div>
+                          <div className="text-xs text-text-muted mt-0.5 truncate max-w-[300px]">{event.meetingUrl}</div>
                         )}
                       </td>
-                      <td className="py-4.5 border-b border-border-base font-mono text-[11px] text-text-secondary">
+                      <td className="py-4 border-b border-border-base text-sm text-text-secondary">
                         {formatAttendees(event.attendees)}
                       </td>
-                      <td className="py-4.5 border-b border-border-base font-mono text-[11px] text-text-secondary">
+                      <td className="py-4 border-b border-border-base text-sm text-text-secondary">
                         <div>{formatDateTime(event.start)}</div>
                         <div className="text-text-muted">{formatTime(event.start)} — {formatTime(event.end)}</div>
                       </td>
-                      <td className="py-4.5 border-b border-border-base text-right">
+                      <td className="py-4 border-b border-border-base text-right">
                         <StatusBadge status={displayStatus} />
                       </td>
-                      <td className="py-4.5 border-b border-border-base text-right">
+                      <td className="py-4 border-b border-border-base text-right">
                         {displayStatus === 'failed' && !isPast && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleRetry(event.id); }}
                             disabled={isRetrying}
-                            className="font-mono text-[10px] font-medium px-2.5 py-1.5 border border-honey/40 bg-surface-3 text-honey uppercase tracking-wider hover:bg-honey/10 transition-all disabled:opacity-40"
+                            className="text-xs font-medium px-3 py-1.5 border border-honey/30 bg-surface-3 text-honey rounded-md hover:bg-honey/10 transition-all disabled:opacity-40"
                           >
                             {isRetrying ? 'Retrying...' : 'Retry Bot'}
                           </button>
@@ -385,7 +410,7 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
                           <button
                             onClick={(e) => { e.stopPropagation(); handleSendBot(event.id); }}
                             disabled={isRetrying}
-                            className="font-mono text-[10px] font-medium px-2.5 py-1.5 border border-honey/40 bg-surface-3 text-honey uppercase tracking-wider hover:bg-honey/10 transition-all disabled:opacity-40"
+                            className="text-xs font-medium px-3 py-1.5 border border-honey/30 bg-surface-3 text-honey rounded-md hover:bg-honey/10 transition-all disabled:opacity-40"
                           >
                             {isRetrying ? 'Sending...' : 'Send Bot'}
                           </button>
@@ -398,19 +423,29 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
                             View Transcript
                           </button>
                         )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedPrepEvent(event); setShowPrepOverlay(true); }}
+                          className="px-1.5 py-1.5 text-text-muted hover:text-honey transition-colors ml-1 rounded"
+                          title="Notes"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
                         {(displayStatus === 'past' || displayStatus === 'done' || displayStatus === 'failed' || (isPast && event.botStatus)) && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleRemove(event, displayStatus); }}
-                            className="font-mono text-[10px] font-medium px-2 py-1.5 text-text-muted hover:text-red-400 transition-colors ml-1"
+                            className="px-1.5 py-1.5 text-text-muted hover:text-red-400 transition-colors rounded"
                             title="Remove"
                           >
                             &#x2715;
                           </button>
                         )}
-                        {!isPast && (displayStatus === 'scheduled' || displayStatus === 'bot_scheduled') && event.botStatus && (
+                        {!isPast && (displayStatus === 'scheduled' || displayStatus === 'bot_scheduled') && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleRemove(event, displayStatus); }}
-                            className="font-mono text-[10px] font-medium px-2 py-1.5 text-text-muted hover:text-red-400 transition-colors ml-1"
+                            className="px-1.5 py-1.5 text-text-muted hover:text-red-400 transition-colors rounded"
                             title="Cancel & Remove"
                           >
                             &#x2715;
@@ -435,6 +470,25 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
           </table>
         )}
       </div>
+
+      {/* Meeting Prep Overlay */}
+      {selectedPrepEvent && (
+        <MeetingPrepOverlay
+          open={showPrepOverlay}
+          onClose={() => { setShowPrepOverlay(false); setSelectedPrepEvent(null); }}
+          event={selectedPrepEvent}
+        />
+      )}
+
+      {/* Calendar Day View Overlay */}
+      <CalendarDayView
+        open={showDayView}
+        onClose={() => setShowDayView(false)}
+        date={date}
+        events={events}
+        duration={parseInt(duration)}
+        onSelectTime={(time) => { setStartTime(time); setShowDayView(false); }}
+      />
     </div>
   );
 }

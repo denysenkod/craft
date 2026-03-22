@@ -65,8 +65,8 @@ async function fetchCurrentTranscript(eventId: string): Promise<string> {
   }
 }
 
-function buildSystemPrompt(meetingTitle: string): string {
-  return `You are a meeting assistant for: "${meetingTitle}".
+function buildSystemPrompt(meetingTitle: string, eventId: string): string {
+  let prompt = `You are a meeting assistant for: "${meetingTitle}".
 
 You help the user during or after their meeting. The current transcript is provided in context with each message.
 
@@ -77,6 +77,37 @@ Guidelines:
 - Reference specific parts of the conversation when relevant
 - Help with summarization, action items, follow-up questions, and insights
 - Format responses in short paragraphs, use bullet points for lists`;
+
+  // Inject prep notes if available
+  try {
+    const db = getDb();
+    const prepRow = db.prepare('SELECT notes_json FROM meeting_prep_notes WHERE google_event_id = ?').get(eventId) as { notes_json: string } | undefined;
+    if (prepRow) {
+      const notes = JSON.parse(prepRow.notes_json) as Array<{ text: string; type: string }>;
+      if (notes.length > 0) {
+        prompt += '\n\n<prep_notes>\nThe user prepared these before the meeting:\n';
+        notes.forEach((n, i) => { prompt += `${i + 1}. [${n.type}] ${n.text}\n`; });
+        prompt += 'Help them address these topics during the conversation.\n</prep_notes>';
+      }
+    }
+
+    // Inject attendee profiles
+    const attendees = db.prepare(
+      'SELECT c.name, c.email, c.job_title, c.profile_summary FROM meeting_attendees ma JOIN contacts c ON ma.contact_id = c.id WHERE ma.google_event_id = ?'
+    ).all(eventId) as Array<{ name: string; email: string; job_title: string | null; profile_summary: string | null }>;
+    if (attendees.length > 0) {
+      prompt += '\n\n<attendee_profiles>\n';
+      attendees.forEach((a) => {
+        prompt += `- ${a.name} (${a.email})`;
+        if (a.job_title) prompt += ` — ${a.job_title}`;
+        if (a.profile_summary) prompt += `\n  Profile: ${a.profile_summary}`;
+        prompt += '\n';
+      });
+      prompt += '</attendee_profiles>';
+    }
+  } catch { /* ignore DB errors in prompt building */ }
+
+  return prompt;
 }
 
 const CHAT_TOOLS: Anthropic.Tool[] = [
@@ -205,7 +236,7 @@ export function registerMeetingChatHandlers() {
     const signal = abortController.signal;
 
     const client = new Anthropic();
-    const systemPrompt = buildSystemPrompt(win.title || 'Meeting');
+    const systemPrompt = buildSystemPrompt(win.title || 'Meeting', currentEventId);
     const transcript = await fetchCurrentTranscript(currentEventId);
     const contextBlock = `<current_transcript>\n${transcript}\n</current_transcript>\n\n`;
 
@@ -243,10 +274,12 @@ export function registerMeetingChatHandlers() {
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
         for (const block of toolBlocks) {
           if (block.type !== 'tool_use') continue;
+          win.webContents.send('meeting-chat:event', { type: 'tool_call', tool: block.name });
           let result = '';
           if (block.name === 'get_mom_test_framework') {
             result = getMomTestContent();
           }
+          win.webContents.send('meeting-chat:event', { type: 'tool_result', tool: block.name });
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
         }
 
@@ -303,36 +336,62 @@ function getFloatingChatHTML(title: string, meetingUrl: string | null): string {
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: transparent; }
-  body { color: #F0EDE8; font-family: -apple-system, system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  body { color: #F0EDE8; font-family: 'Instrument Sans', -apple-system, system-ui, sans-serif; font-size: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased; }
   #window { flex: 1; display: flex; flex-direction: column; overflow: hidden; margin: 8px; border-radius: 14px; background: rgba(30, 30, 35, 0.78); backdrop-filter: blur(40px) saturate(1.4); -webkit-backdrop-filter: blur(40px) saturate(1.4); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04); }
   #titlebar { -webkit-app-region: drag; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
-  #titlebar .title { font-family: monospace; font-size: 11px; color: #E8A838; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  #titlebar .title { font-size: 12px; color: #E8A838; font-weight: 600; }
   #titlebar .actions { display: flex; gap: 6px; -webkit-app-region: no-drag; }
-  #titlebar button { background: none; border: none; color: rgba(255,255,255,0.35); cursor: pointer; padding: 2px; }
+  #titlebar button { background: none; border: none; color: rgba(255,255,255,0.35); cursor: pointer; padding: 2px; border-radius: 4px; }
   #titlebar button:hover { color: #F0EDE8; }
   #tip-bar { padding: 8px 14px; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 12px; line-height: 1.4; min-height: 36px; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-  #tip-bar .label { font-family: monospace; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.3); flex-shrink: 0; }
+  #tip-bar .label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.3); flex-shrink: 0; }
   #tip-bar .text { color: rgba(255,255,255,0.6); flex: 1; }
-  #tip-bar .refresh { background: none; border: none; color: rgba(255,255,255,0.25); cursor: pointer; padding: 2px; flex-shrink: 0; transition: color 0.15s; }
+  #tip-bar .refresh { background: none; border: none; color: rgba(255,255,255,0.25); cursor: pointer; padding: 2px; flex-shrink: 0; transition: color 0.15s; border-radius: 4px; }
   #tip-bar .refresh:hover { color: #E8A838; }
-  #messages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-  .msg { padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; max-width: 90%; word-wrap: break-word; }
-  .msg.user { background: rgba(232,168,56,0.18); align-self: flex-end; color: #F0EDE8; }
-  .msg.assistant { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.06); align-self: flex-start; color: rgba(255,255,255,0.75); }
-  .msg.assistant p { margin: 0 0 8px 0; } .msg.assistant p:last-child { margin-bottom: 0; }
-  .msg.assistant ul, .msg.assistant ol { margin: 4px 0 8px 18px; padding: 0; } .msg.assistant li { margin: 2px 0; }
-  .msg.assistant strong { color: #F0EDE8; }
-  .msg.assistant code { background: rgba(255,255,255,0.06); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
-  .msg.assistant pre { background: rgba(255,255,255,0.04); padding: 8px; border-radius: 6px; overflow-x: auto; margin: 6px 0; }
-  .msg.assistant pre code { padding: 0; background: none; }
-  .msg.thinking { color: rgba(255,255,255,0.35); font-style: italic; font-size: 12px; }
-  .msg.error { color: #E87B6B; font-size: 12px; }
-  #input-area { padding: 10px 14px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; gap: 8px; flex-shrink: 0; }
-  #input { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #F0EDE8; padding: 8px 10px; font-size: 13px; font-family: inherit; outline: none; resize: none; }
-  #input:focus { border-color: rgba(232,168,56,0.35); }
-  #send-btn { background: rgba(232,168,56,0.85); border: none; border-radius: 8px; color: #07070A; padding: 8px 14px; font-family: monospace; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; }
-  #send-btn:hover { background: rgba(232,168,56,1); }
-  #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  /* User bubble — golden, rounded right */
+  .bubble-wrap { display: flex; }
+  .bubble-wrap.user { justify-content: flex-end; }
+  .bubble-wrap.assistant { justify-content: flex-start; }
+  .bubble { padding: 10px 14px; font-size: 13px; line-height: 1.55; max-width: 88%; word-wrap: break-word; }
+  .bubble.user { background: #E8A838; color: #07070A; border-radius: 18px 18px 4px 18px; }
+  .bubble.assistant { background: #1C1C22; color: #F0EDE8; border-radius: 18px 18px 18px 4px; }
+  .bubble.assistant p { margin: 2px 0; }
+  .bubble.assistant ul, .bubble.assistant ol { margin: 4px 0; padding-left: 18px; } .bubble.assistant li { margin: 2px 0; }
+  .bubble.assistant strong { font-weight: 600; }
+  .bubble.assistant code { background: rgba(255,255,255,0.08); border-radius: 4px; padding: 1px 5px; font-size: 12px; font-family: monospace; }
+  .bubble.assistant pre { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px 12px; margin: 6px 0; font-size: 12px; font-family: monospace; overflow-x: auto; white-space: pre; }
+  .bubble.assistant pre code { background: none; padding: 0; }
+  .bubble.assistant h2, .bubble.assistant h3 { font-size: 14px; font-weight: 600; margin: 8px 0 4px; }
+  /* Thinking indicator */
+  .status-wrap { display: flex; flex-direction: column; gap: 4px; align-self: flex-start; }
+  .tool-done { display: flex; align-items: center; gap: 6px; padding: 4px 14px; font-size: 12px; color: rgba(255,255,255,0.4); }
+  .tool-done-dot { width: 6px; height: 6px; border-radius: 50%; background: #5CC9A0; flex-shrink: 0; }
+  .thinking-indicator { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 18px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); }
+  .thinking-dot { width: 6px; height: 6px; border-radius: 50%; background: #E8A838; }
+  .thinking-dot.bounce-y { animation: thinkBounce 1.4s ease-in-out infinite; }
+  .thinking-dot.bounce-x { animation: toolBounce 0.8s ease-in-out infinite; }
+  .thinking-text { font-size: 12px; color: rgba(255,255,255,0.4); }
+  .error { font-size: 12px; color: #E87B6B; padding: 8px 14px; align-self: flex-start; }
+  @keyframes thinkBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+  @keyframes toolBounce {
+    0%, 100% { transform: translateX(0); opacity: 0.4; }
+    50% { transform: translateX(4px); opacity: 1; }
+  }
+  /* Input area — matches ChatInterface style */
+  #input-wrap { margin: 0 10px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04); overflow: hidden; position: relative; }
+  #input { width: 100%; background: transparent; border: none; color: #F0EDE8; padding: 12px 14px 36px; font-size: 13px; font-family: inherit; outline: none; resize: none; }
+  #input::placeholder { color: rgba(255,255,255,0.3); }
+  #input-buttons { position: absolute; bottom: 6px; right: 6px; display: flex; gap: 6px; }
+  .send-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: none; cursor: pointer; transition: background 0.15s; }
+  .send-btn.active { background: #E8A838; }
+  .send-btn.inactive { background: rgba(255,255,255,0.08); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .cancel-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: none; cursor: pointer; background: rgba(232,107,107,0.15); }
+  .cancel-btn:hover { background: rgba(232,107,107,0.3); }
 </style>
 </head>
 <body>
@@ -354,30 +413,52 @@ function getFloatingChatHTML(title: string, meetingUrl: string | null): string {
     </button>
   </div>
   <div id="messages"></div>
-  <div id="input-area">
+  <div id="input-wrap">
     <textarea id="input" rows="1" placeholder="Ask about this meeting..."></textarea>
-    <button id="send-btn" onclick="sendMessage()">Send</button>
+    <div id="input-buttons">
+      <button id="send-btn" class="send-btn inactive" onclick="sendMessage()" disabled>
+        <svg width="14" height="14" fill="none" stroke="#5E5B54" stroke-width="2" viewBox="0 0 24 24"><path d="M12 19V5m0 0l-5 5m5-5l5 5"/></svg>
+      </button>
+    </div>
   </div>
   </div>
   <script>
-    const messages = document.getElementById('messages');
-    const input = document.getElementById('input');
-    const sendBtn = document.getElementById('send-btn');
-    const tipText = document.getElementById('tip-text');
-    let sending = false;
+    var messages = document.getElementById('messages');
+    var input = document.getElementById('input');
+    var sendBtn = document.getElementById('send-btn');
+    var tipText = document.getElementById('tip-text');
+    var sending = false;
+    var toolLabels = {
+      get_transcript: 'Read transcript', search_transcripts: 'Searched transcripts',
+      get_meeting: 'Looked up meeting', list_meetings: 'Checked meetings',
+      get_task: 'Looked up task', list_tasks: 'Searched tasks',
+      create_task: 'Drafted task', update_task: 'Prepared update',
+      get_contact: 'Looked up contact', list_contacts: 'Listed contacts',
+      get_mom_test_framework: 'Loaded Mom Test',
+    };
+    var completedTools = [];
+
+    // Update send button appearance
+    input.addEventListener('input', function() {
+      var hasText = input.value.trim().length > 0;
+      sendBtn.className = 'send-btn ' + (hasText ? 'active' : 'inactive');
+      sendBtn.disabled = !hasText || sending;
+      sendBtn.querySelector('svg').setAttribute('stroke', hasText ? '#07070A' : '#5E5B54');
+    });
 
     function md(text) {
-      let html = text
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      html = html.replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, '<pre><code>$1</code></pre>');
+      var html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      // Code blocks
+      html = html.replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, function(m, code) { return '<pre><code>' + code.replace(/^\\w*\\n/, '') + '</code></pre>'; });
       html = html.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
       html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
       html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
       html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+      // Lists
       html = html.replace(/^[\\-\\*] (.+)$/gm, '<li>$1</li>');
-      html = html.replace(/(<li>.*<\\/li>)/gs, '<ul>$1</ul>');
+      html = html.replace(/(<li>[\\s\\S]*?<\\/li>)/g, '<ul>$1</ul>');
       html = html.replace(/<\\/ul>\\s*<ul>/g, '');
+      // Paragraphs
       html = html.split(/\\n\\n+/).map(function(p) {
         p = p.trim();
         if (!p || p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<pre')) return p;
@@ -386,13 +467,42 @@ function getFloatingChatHTML(title: string, meetingUrl: string | null): string {
       return html;
     }
 
-    function addMessage(role, text, isHtml) {
-      var div = document.createElement('div');
-      div.className = 'msg ' + role;
-      if (isHtml) { div.innerHTML = text; } else { div.textContent = text; }
-      messages.appendChild(div);
+    function addBubble(role, text, isHtml) {
+      var wrap = document.createElement('div');
+      wrap.className = 'bubble-wrap ' + role;
+      var bubble = document.createElement('div');
+      bubble.className = 'bubble ' + role;
+      if (isHtml) { bubble.innerHTML = text; } else { bubble.textContent = text; }
+      wrap.appendChild(bubble);
+      messages.appendChild(wrap);
       messages.scrollTop = messages.scrollHeight;
-      return div;
+      return wrap;
+    }
+
+    function showStatus(label, isTool) {
+      removeStatus();
+      var wrap = document.createElement('div');
+      wrap.className = 'status-wrap';
+      wrap.id = 'status-wrap';
+      // Show completed tools
+      completedTools.forEach(function(t) {
+        var d = document.createElement('div');
+        d.className = 'tool-done';
+        d.innerHTML = '<span class="tool-done-dot"></span>' + t;
+        wrap.appendChild(d);
+      });
+      // Active indicator
+      var div = document.createElement('div');
+      div.className = 'thinking-indicator';
+      div.innerHTML = '<span class="thinking-text">' + label + '</span><span class="thinking-dot ' + (isTool ? 'bounce-x' : 'bounce-y') + '"></span>';
+      wrap.appendChild(div);
+      messages.appendChild(wrap);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function removeStatus() {
+      var el = document.getElementById('status-wrap');
+      if (el) el.remove();
     }
 
     function sendMessage() {
@@ -400,7 +510,8 @@ function getFloatingChatHTML(title: string, meetingUrl: string | null): string {
       if (!text || sending) return;
       sending = true;
       sendBtn.disabled = true;
-      addMessage('user', text, false);
+      sendBtn.className = 'send-btn inactive';
+      addBubble('user', text, false);
       input.value = '';
       window.api.invoke('meeting-chat:send', text);
     }
@@ -411,17 +522,29 @@ function getFloatingChatHTML(title: string, meetingUrl: string | null): string {
 
     window.api.on('meeting-chat:event', function(event) {
       if (event.type === 'thinking') {
-        addMessage('thinking', 'Thinking...', false);
+        completedTools = [];
+        showStatus('Thinking...', false);
+      } else if (event.type === 'tool_call') {
+        var label = toolLabels[event.tool] || event.tool;
+        showStatus(label + '...', true);
+      } else if (event.type === 'tool_result') {
+        var doneLabel = toolLabels[event.tool] || event.tool;
+        completedTools.push(doneLabel);
+        showStatus('Thinking...', false);
       } else if (event.type === 'message') {
-        var thinking = messages.querySelector('.thinking');
-        if (thinking) thinking.remove();
-        addMessage('assistant', md(event.content), true);
+        removeStatus();
+        completedTools = [];
+        addBubble('assistant', md(event.content), true);
         sending = false;
         sendBtn.disabled = false;
+        input.dispatchEvent(new Event('input'));
       } else if (event.type === 'error') {
-        var thinking2 = messages.querySelector('.thinking');
-        if (thinking2) thinking2.remove();
-        addMessage('error', 'Error: ' + event.message, false);
+        removeStatus();
+        completedTools = [];
+        var div = document.createElement('div');
+        div.className = 'error';
+        div.textContent = 'Error: ' + event.message;
+        messages.appendChild(div);
         sending = false;
         sendBtn.disabled = false;
       } else if (event.type === 'tip') {
