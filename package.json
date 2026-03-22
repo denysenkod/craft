@@ -51,6 +51,7 @@
     "typescript": "~4.5.4"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.81",
     "@anthropic-ai/sdk": "^0.80.0",
     "@linear/sdk": "^78.0.0",
     "better-sqlite3": "^12.8.0",
