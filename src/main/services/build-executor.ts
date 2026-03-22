@@ -181,6 +181,7 @@ Begin.`;
         maxTurns: 100,
         persistSession: false,
         model: 'claude-sonnet-4-6',
+        includePartialMessages: true,
       },
     });
 
@@ -193,13 +194,30 @@ Begin.`;
       let resultMessage: SDKResultMessage | null = null;
 
       for await (const message of session) {
-        // Handle tool_use_summary: emit as progress
+        // Tool use summaries — emitted after each tool completes
         if (message.type === 'tool_use_summary') {
           const summary = (message as SDKToolUseSummaryMessage).summary;
           emitEvent(buildId, 'progress', summary);
         }
 
-        // Handle assistant messages: track text, detect questions
+        // Tool progress — emitted while a tool is running
+        if (message.type === 'tool_progress') {
+          const toolMsg = message as any;
+          emitEvent(buildId, 'progress', `Running ${toolMsg.tool_name}...`);
+        }
+
+        // Streaming chunks — real-time text as Claude generates
+        if (message.type === 'stream_event') {
+          const streamMsg = message as any;
+          const event = streamMsg.event;
+          // content_block_start with tool_use shows what tool is being called
+          if (event?.type === 'content_block_start' && event?.content_block?.type === 'tool_use') {
+            const toolName = event.content_block.name || '';
+            emitEvent(buildId, 'progress', `Using ${toolName}`);
+          }
+        }
+
+        // Full assistant messages — track text for Q&A detection
         if (message.type === 'assistant') {
           const assistantMsg = message as SDKAssistantMessage;
           const textBlocks: string[] = [];
@@ -207,25 +225,24 @@ Begin.`;
             if (block.type === 'text' && block.text) {
               textBlocks.push(block.text);
             }
-            // Emit tool_use blocks as progress (shows what Claude is doing)
+            // Emit tool_use blocks with human-readable descriptions
             if (block.type === 'tool_use') {
               const toolBlock = block as any;
               const toolName = toolBlock.name || 'working';
               const input = toolBlock.input || {};
               let detail = '';
-              if (toolName === 'Read' || toolName === 'read_file') {
-                detail = `Reading ${input.file_path || input.path || ''}`;
-              } else if (toolName === 'Write' || toolName === 'write_file') {
-                detail = `Writing ${input.file_path || input.path || ''}`;
-              } else if (toolName === 'Edit' || toolName === 'edit_file') {
-                detail = `Editing ${input.file_path || input.path || ''}`;
-              } else if (toolName === 'Bash' || toolName === 'execute_command') {
-                const cmd = (input.command || '').substring(0, 80);
-                detail = `Running: ${cmd}`;
-              } else if (toolName === 'Glob' || toolName === 'glob') {
+              if (toolName === 'Read') {
+                detail = `Reading ${input.file_path || ''}`;
+              } else if (toolName === 'Write') {
+                detail = `Writing ${input.file_path || ''}`;
+              } else if (toolName === 'Edit') {
+                detail = `Editing ${input.file_path || ''}`;
+              } else if (toolName === 'Bash') {
+                detail = `Running: ${(input.command || '').substring(0, 100)}`;
+              } else if (toolName === 'Glob') {
                 detail = `Searching for ${input.pattern || 'files'}`;
-              } else if (toolName === 'Grep' || toolName === 'grep') {
-                detail = `Searching for "${input.pattern || ''}"`;
+              } else if (toolName === 'Grep') {
+                detail = `Searching for "${(input.pattern || '').substring(0, 60)}"`;
               } else {
                 detail = `Using ${toolName}`;
               }
@@ -234,15 +251,13 @@ Begin.`;
           }
           if (textBlocks.length > 0) {
             lastAssistantText = textBlocks.join('\n');
-            // Emit short assistant text as progress (thinking out loud)
-            const preview = lastAssistantText.substring(0, 150);
+            const preview = lastAssistantText.substring(0, 200);
             emitEvent(buildId, 'progress', preview);
           }
-          // Store session ID for potential resume
           currentSessionId = assistantMsg.session_id;
         }
 
-        // Handle result
+        // Final result
         if (message.type === 'result') {
           resultMessage = message as SDKResultMessage;
         }
@@ -298,6 +313,7 @@ Begin.`;
               persistSession: false,
               resume: currentSessionId,
               model: 'claude-sonnet-4-6',
+              includePartialMessages: true,
             },
           });
 
