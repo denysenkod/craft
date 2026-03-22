@@ -202,7 +202,17 @@ export function openMeetingChat(eventId: string, meetingTitle: string, meetingUr
     },
   });
 
-  floatingWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getFloatingChatHTML(meetingTitle, meetingUrl))}`);
+  // Load prep notes for this meeting
+  let prepNotes: Array<{ id: string; text: string; type: string }> = [];
+  try {
+    const db = getDb();
+    const prepRow = db.prepare('SELECT notes_json FROM meeting_prep_notes WHERE google_event_id = ?').get(eventId) as { notes_json: string } | undefined;
+    if (prepRow) {
+      prepNotes = JSON.parse(prepRow.notes_json);
+    }
+  } catch { /* ignore */ }
+
+  floatingWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getFloatingChatHTML(meetingTitle, meetingUrl, prepNotes))}`);
 
   // Start tip generation every 25 seconds
   tipInterval = setInterval(() => {
@@ -323,7 +333,7 @@ export function registerMeetingChatHandlers() {
 
 // ── HTML Template ────────────────────────────────────────────────────
 
-function getFloatingChatHTML(title: string, meetingUrl: string | null): string {
+function getFloatingChatHTML(title: string, meetingUrl: string | null, prepNotes: Array<{ id: string; text: string; type: string }> = []): string {
   const escapedTitle = title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
   const joinButton = meetingUrl
     ? `<button id="join-btn" onclick="window.api.invoke('shell:open-external', '${meetingUrl.replace(/'/g, "\\'")}')" style="background:none;border:1px solid #3A3A44;color:#9C9890;font-family:monospace;font-size:10px;padding:4px 8px;cursor:pointer;text-transform:uppercase;letter-spacing:0.05em;">Join</button>`
@@ -348,6 +358,20 @@ function getFloatingChatHTML(title: string, meetingUrl: string | null): string {
   #tip-bar .text { color: rgba(255,255,255,0.6); flex: 1; }
   #tip-bar .refresh { background: none; border: none; color: rgba(255,255,255,0.25); cursor: pointer; padding: 2px; flex-shrink: 0; transition: color 0.15s; border-radius: 4px; }
   #tip-bar .refresh:hover { color: #E8A838; }
+  /* Prep notes panel */
+  #notes-panel { border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
+  #notes-toggle { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; cursor: pointer; background: none; border: none; width: 100%; color: rgba(255,255,255,0.4); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  #notes-toggle:hover { color: rgba(255,255,255,0.6); }
+  #notes-toggle .chevron { transition: transform 0.2s; }
+  #notes-toggle .chevron.open { transform: rotate(180deg); }
+  #notes-list { padding: 0 14px 10px; display: none; }
+  #notes-list.open { display: block; }
+  .note-item { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
+  .note-badge { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; border-radius: 3px; flex-shrink: 0; margin-top: 1px; }
+  .note-badge.q { background: rgba(232,168,56,0.1); color: #E8A838; border: 1px solid rgba(232,168,56,0.3); }
+  .note-badge.n { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.08); }
+  .note-text { font-size: 12px; color: rgba(255,255,255,0.6); line-height: 1.4; }
+  .note-text.done { text-decoration: line-through; opacity: 0.4; }
   #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
   /* User bubble — golden, rounded right */
   .bubble-wrap { display: flex; }
@@ -412,6 +436,22 @@ function getFloatingChatHTML(title: string, meetingUrl: string | null): string {
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
     </button>
   </div>
+  ${prepNotes.length > 0 ? `
+  <div id="notes-panel">
+    <button id="notes-toggle" onclick="toggleNotes()">
+      <span>Prep Notes (${prepNotes.length})</span>
+      <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div id="notes-list">
+      ${prepNotes.map((n) => `
+        <div class="note-item" data-id="${n.id}">
+          <span class="note-badge ${n.type === 'question' ? 'q' : 'n'}">${n.type === 'question' ? 'Q' : 'N'}</span>
+          <span class="note-text" onclick="this.classList.toggle('done')">${n.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+  ` : ''}
   <div id="messages"></div>
   <div id="input-wrap">
     <textarea id="input" rows="1" placeholder="Ask about this meeting..."></textarea>
@@ -428,6 +468,15 @@ function getFloatingChatHTML(title: string, meetingUrl: string | null): string {
     var sendBtn = document.getElementById('send-btn');
     var tipText = document.getElementById('tip-text');
     var sending = false;
+
+    function toggleNotes() {
+      var list = document.getElementById('notes-list');
+      var chevron = document.querySelector('#notes-toggle .chevron');
+      if (list && chevron) {
+        list.classList.toggle('open');
+        chevron.classList.toggle('open');
+      }
+    }
     var toolLabels = {
       get_transcript: 'Read transcript', search_transcripts: 'Searched transcripts',
       get_meeting: 'Looked up meeting', list_meetings: 'Checked meetings',

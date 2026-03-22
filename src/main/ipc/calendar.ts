@@ -91,6 +91,34 @@ export function registerCalendarHandlers() {
   }) => {
     try {
       const event = await createEvent(params);
+
+      // Schedule bot in background — don't block the user
+      if (event.meetingUrl) {
+        const eventId = event.id;
+        const meetingUrl = event.meetingUrl;
+        const startTime = event.start;
+
+        (async () => {
+          try {
+            const wsUrl = await startLiveTranscript(eventId);
+            const bot = await scheduleBot(meetingUrl, startTime, wsUrl);
+            const db = getDb();
+            db.prepare(
+              'INSERT INTO meeting_bots (google_event_id, recall_bot_id, status) VALUES (?, ?, ?) ON CONFLICT(google_event_id) DO UPDATE SET recall_bot_id = excluded.recall_bot_id, status = excluded.status, error_message = NULL'
+            ).run(eventId, bot.id, 'scheduled');
+            console.log(`[bot] Scheduled for ${eventId}`);
+          } catch (botErr: unknown) {
+            const errorMsg = (botErr as Error).message || 'Failed to schedule bot';
+            console.error('[bot] Auto-send failed:', errorMsg);
+            stopLiveTranscript(eventId);
+            const db = getDb();
+            db.prepare(
+              'INSERT INTO meeting_bots (google_event_id, recall_bot_id, status, error_message) VALUES (?, NULL, ?, ?) ON CONFLICT(google_event_id) DO UPDATE SET status = excluded.status, error_message = excluded.error_message'
+            ).run(eventId, 'failed', errorMsg);
+          }
+        })();
+      }
+
       return { ...event, recallBotId: null, botStatus: null, botError: null };
     } catch (err: unknown) {
       console.error('calendar:create-event error:', err);

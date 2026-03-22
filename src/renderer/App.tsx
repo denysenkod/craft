@@ -22,7 +22,7 @@ export default function App() {
   const [momTestOpen, setMomTestOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<{ id: string; title: string } | null>(null);
   const [taskVersion, setTaskVersion] = useState(0);
-  const [tasksChatOpen, setTasksChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [transcriptId, setTranscriptId] = useState<string | null>(null);
   const [meetingId, setMeetingId] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export default function App() {
     meetingId: meetingId || undefined,
     meetingTitle: selectedMeeting?.title,
   };
-  const showChat = screen === 'transcript' || (screen === 'tasks' && tasksChatOpen);
+  const showChat = (screen === 'transcript' || screen === 'tasks') && chatOpen;
 
   const openTranscript = (calendarEventId: string, meetingTitle: string) => {
     setSelectedMeeting({ id: calendarEventId, title: meetingTitle });
@@ -78,19 +78,19 @@ export default function App() {
         {screen === 'tasks' && <TaskReview refreshKey={taskVersion} />}
       </div>
 
-      {/* Chat toggle button — tasks screen */}
-      {screen === 'tasks' && (
+      {/* Chat toggle button — transcript and tasks screens */}
+      {(screen === 'transcript' || screen === 'tasks') && (
         <button
-          onClick={() => setTasksChatOpen(!tasksChatOpen)}
-          className="fixed bottom-6 z-40 w-11 h-11 flex items-center justify-center border"
+          onClick={() => setChatOpen(!chatOpen)}
+          className="fixed bottom-6 z-40 w-11 h-11 flex items-center justify-center border rounded-xl transition-all duration-200"
           style={{
-            right: tasksChatOpen ? 'calc(420px + 16px)' : '24px',
-            background: tasksChatOpen ? '#E8A838' : '#1C1C22',
-            borderColor: tasksChatOpen ? '#E8A838' : '#3A3A44',
+            right: chatOpen ? 'calc(420px + 16px)' : '24px',
+            background: chatOpen ? '#E8A838' : '#1C1C22',
+            borderColor: chatOpen ? '#E8A838' : '#3A3A44',
           }}
-          title={tasksChatOpen ? 'Close chat' : 'Open chat'}
+          title={chatOpen ? 'Close chat' : 'Open chat'}
         >
-          <svg fill="none" stroke={tasksChatOpen ? '#07070A' : '#9C9890'} strokeWidth={1.5} viewBox="0 0 24 24" className="w-[18px] h-[18px]">
+          <svg fill="none" stroke={chatOpen ? '#07070A' : '#9C9890'} strokeWidth={1.5} viewBox="0 0 24 24" className="w-[18px] h-[18px]">
             <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
         </button>
@@ -107,7 +107,7 @@ export default function App() {
             activeSessionId={activeSessionId}
             onSessionChange={setActiveSessionId}
             onTaskChanged={() => setTaskVersion(v => v + 1)}
-            onNavigateToTasks={() => { setScreen('tasks'); setTasksChatOpen(true); }}
+            onNavigateToTasks={() => { setScreen('tasks'); setChatOpen(true); }}
           />
         </div>
       )}

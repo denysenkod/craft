@@ -397,16 +397,7 @@ export default function MeetingList({ onOpenTranscript, onOpenMomTest }: Meeting
                         <StatusBadge status={displayStatus} />
                       </td>
                       <td className="py-4 border-b border-border-base text-right">
-                        {displayStatus === 'failed' && !isPast && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleRetry(event.id); }}
-                            disabled={isRetrying}
-                            className="text-xs font-medium px-3 py-1.5 border border-honey/30 bg-surface-3 text-honey rounded-md hover:bg-honey/10 transition-all disabled:opacity-40"
-                          >
-                            {isRetrying ? 'Retrying...' : 'Retry Bot'}
-                          </button>
-                        )}
-                        {!event.botStatus && event.meetingUrl && (displayStatus === 'scheduled' || displayStatus === 'live') && (
+                        {displayStatus === 'failed' && !isPast && event.meetingUrl && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleSendBot(event.id); }}
                             disabled={isRetrying}
