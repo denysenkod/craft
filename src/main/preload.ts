@@ -19,12 +19,15 @@ const invokeChannels = [
   'prep-chat:send', 'prep-chat:cancel', 'prep-chat:get-history', 'prep-chat:clear-history',
   'momtest:generate-questions',
   'repo:list', 'repo:add', 'repo:remove', 'repo:validate',
+  'build:create', 'build:list', 'build:get', 'build:cancel', 'build:retry', 'build:answer',
 ] as const;
 
 const listenChannels = [
   'chat:stream-event',
   'meeting-chat:event',
   'prep-chat:stream-event',
+  'build:event',
+  'build:status',
 ] as const;
 
 type InvokeChannel = typeof invokeChannels[number];

@@ -9,6 +9,7 @@ import { registerContactHandlers } from './contacts';
 import { registerPrepNotesHandlers } from './prep-notes';
 import { registerPrepChatHandlers } from './prep-chat';
 import { registerRepoHandlers } from './repos';
+import { registerBuildHandlers } from './builds';
 import { openMeetingChat, registerMeetingChatHandlers } from '../services/meeting-chat';
 
 export function registerAllHandlers() {
@@ -65,6 +66,9 @@ export function registerAllHandlers() {
 
   // Repo handlers
   registerRepoHandlers();
+
+  // Build handlers
+  registerBuildHandlers();
 
   console.log('IPC handlers registered');
 }
