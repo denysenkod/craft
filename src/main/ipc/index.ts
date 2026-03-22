@@ -8,6 +8,7 @@ import { registerChatHandlers } from './chat';
 import { registerContactHandlers } from './contacts';
 import { registerPrepNotesHandlers } from './prep-notes';
 import { registerPrepChatHandlers } from './prep-chat';
+import { registerRepoHandlers } from './repos';
 import { openMeetingChat, registerMeetingChatHandlers } from '../services/meeting-chat';
 
 export function registerAllHandlers() {
@@ -61,6 +62,9 @@ export function registerAllHandlers() {
     openMeetingChat(data.eventId, data.title, data.meetingUrl);
   });
   registerMeetingChatHandlers();
+
+  // Repo handlers
+  registerRepoHandlers();
 
   console.log('IPC handlers registered');
 }

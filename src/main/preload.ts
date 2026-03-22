@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 const invokeChannels = [
   'meeting:create', 'meeting:list', 'meeting:get-status', 'meeting:paste-transcript',
   'meeting:fetch-transcript',
-  'transcript:get', 'transcript:analyze',
+  'transcript:get', 'transcript:list', 'transcript:analyze',
   'chat:send-message', 'chat:cancel', 'chat:get-history', 'chat:clear-history',
   'chat:approve-proposal', 'chat:reject-proposal',
   'chat:create-session', 'chat:list-sessions', 'chat:update-session-title',
@@ -18,6 +18,7 @@ const invokeChannels = [
   'prep:get-notes', 'prep:save-notes', 'prep:get-attendees', 'prep:set-attendees',
   'prep-chat:send', 'prep-chat:cancel', 'prep-chat:get-history', 'prep-chat:clear-history',
   'momtest:generate-questions',
+  'repo:list', 'repo:add', 'repo:remove', 'repo:validate',
 ] as const;
 
 const listenChannels = [
