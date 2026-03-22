@@ -202,15 +202,41 @@ Begin.`;
         // Handle assistant messages: track text, detect questions
         if (message.type === 'assistant') {
           const assistantMsg = message as SDKAssistantMessage;
-          // Extract text for tracking
           const textBlocks: string[] = [];
           for (const block of assistantMsg.message.content) {
             if (block.type === 'text' && block.text) {
               textBlocks.push(block.text);
             }
+            // Emit tool_use blocks as progress (shows what Claude is doing)
+            if (block.type === 'tool_use') {
+              const toolBlock = block as any;
+              const toolName = toolBlock.name || 'working';
+              const input = toolBlock.input || {};
+              let detail = '';
+              if (toolName === 'Read' || toolName === 'read_file') {
+                detail = `Reading ${input.file_path || input.path || ''}`;
+              } else if (toolName === 'Write' || toolName === 'write_file') {
+                detail = `Writing ${input.file_path || input.path || ''}`;
+              } else if (toolName === 'Edit' || toolName === 'edit_file') {
+                detail = `Editing ${input.file_path || input.path || ''}`;
+              } else if (toolName === 'Bash' || toolName === 'execute_command') {
+                const cmd = (input.command || '').substring(0, 80);
+                detail = `Running: ${cmd}`;
+              } else if (toolName === 'Glob' || toolName === 'glob') {
+                detail = `Searching for ${input.pattern || 'files'}`;
+              } else if (toolName === 'Grep' || toolName === 'grep') {
+                detail = `Searching for "${input.pattern || ''}"`;
+              } else {
+                detail = `Using ${toolName}`;
+              }
+              emitEvent(buildId, 'progress', detail);
+            }
           }
           if (textBlocks.length > 0) {
             lastAssistantText = textBlocks.join('\n');
+            // Emit short assistant text as progress (thinking out loud)
+            const preview = lastAssistantText.substring(0, 150);
+            emitEvent(buildId, 'progress', preview);
           }
           // Store session ID for potential resume
           currentSessionId = assistantMsg.session_id;
