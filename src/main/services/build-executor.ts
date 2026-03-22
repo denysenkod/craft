@@ -19,7 +19,7 @@ export type BuildStatus =
   | 'queued'
   | 'running'
   | 'awaiting_input'
-  | 'completed'
+  | 'done'
   | 'failed'
   | 'cancelled';
 
@@ -276,12 +276,12 @@ Begin.`;
             ? resultText.substring(0, 2000) + '...'
             : resultText;
 
-          updateBuildStatus(buildId, 'completed', {
+          updateBuildStatus(buildId, 'done', {
             pr_url: prUrl,
             files_changed: filesChanged,
             summary,
           });
-          emitEvent(buildId, 'completed', summary);
+          emitEvent(buildId, 'done', summary);
         }
       } else {
         // Error result

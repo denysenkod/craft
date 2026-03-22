@@ -23,6 +23,7 @@ const STATUS_DOT: Record<string, { color: string; pulse?: boolean }> = {
   awaiting_input: { color: '#E8A838', pulse: true },
   done: { color: '#60a5fa' },
   failed: { color: '#f87171' },
+  cancelled: { color: '#9ca3af' },
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -31,6 +32,7 @@ const STATUS_LABEL: Record<string, string> = {
   awaiting_input: 'Needs Input',
   done: 'Done',
   failed: 'Failed',
+  cancelled: 'Cancelled',
 };
 
 function timeAgo(dateStr: string): string {

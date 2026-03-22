@@ -37,6 +37,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }>
   awaiting_input: { label: 'Needs Input', bg: 'rgba(232,168,56,0.15)', text: '#E8A838' },
   done: { label: 'Done', bg: 'rgba(96,165,250,0.15)', text: '#60a5fa' },
   failed: { label: 'Failed', bg: 'rgba(248,113,113,0.15)', text: '#f87171' },
+  cancelled: { label: 'Cancelled', bg: 'rgba(156,163,175,0.15)', text: '#9ca3af' },
 };
 
 function formatTime(dateStr: string, baseDateStr: string): string {
