@@ -84,7 +84,6 @@ export async function startAuthFlow(): Promise<{ success: boolean; email?: strin
           if (userInfo.email) {
             setSetting('google_user_email', userInfo.email);
           }
-
           res.writeHead(200, { 'Content-Type': 'text/html' });
           res.end('<html><body><h1>Authentication successful!</h1><p>You can close this tab and return to the app.</p></body></html>');
           server.close();

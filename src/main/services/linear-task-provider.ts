@@ -95,6 +95,12 @@ export class LinearTaskProvider implements TaskProvider {
     };
   }
 
+  async delete(taskId: string): Promise<{ id: string }> {
+    const client: any = await getLinearClient();
+    await client.deleteIssue(taskId);
+    return { id: taskId };
+  }
+
   async update(input: UpdateTaskInput): Promise<{ id: string }> {
     const client: any = await getLinearClient();
     const updates: Record<string, string> = {};

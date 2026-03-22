@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface Proposal {
   proposal_id: string;
-  proposal_type: 'create' | 'update';
+  proposal_type: 'create' | 'update' | 'delete';
   status: 'pending' | 'approved' | 'rejected';
   title?: string;
   description?: string;
-  changes?: { title?: { old: string; new: string }; description?: { old: string; new: string } };
+  task_id?: string;
+  changes?: { title?: { old: string; new: string }; description?: { old: string; new: string }; status?: { old: string; new: string } };
   reason?: string;
 }
 
@@ -14,6 +15,7 @@ interface Props {
   role: 'user' | 'assistant';
   content: string;
   proposals?: Proposal[];
+  processingProposals?: Set<string>;
   onApprove?: (proposal: Proposal) => void;
   onReject?: (proposalId: string) => void;
 }
@@ -229,11 +231,70 @@ function renderInline(text: string): React.ReactNode {
   return parts.length === 1 ? parts[0] : parts;
 }
 
-export default function MessageBubble({ role, content, proposals, onApprove, onReject }: Props) {
+function proposalDetail(p: Proposal): string {
+  if (p.proposal_type === 'create') {
+    return `create_task("${p.title}")`;
+  }
+  if (p.proposal_type === 'delete') {
+    return `delete_task(${p.task_id || '?'})${p.title ? ` — "${p.title}"` : ''}`;
+  }
+  // update
+  const parts: string[] = [];
+  if (p.changes?.title) parts.push(`title: "${p.changes.title.old}" → "${p.changes.title.new}"`);
+  if (p.changes?.status) parts.push(`status: ${p.changes.status.old} → ${p.changes.status.new}`);
+  if (p.changes?.description) parts.push('description: updated');
+  return `update_task(${p.task_id || '?'}, {${parts.join(', ')}})`;
+}
+
+function ResolvedProposalsSummary({ proposals }: { proposals: Proposal[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const approved = proposals.filter(p => p.status === 'approved').length;
+  const rejected = proposals.filter(p => p.status === 'rejected').length;
+
+  const parts: string[] = [];
+  if (approved) parts.push(`${approved} approved`);
+  if (rejected) parts.push(`${rejected} rejected`);
+  const label = parts.join(', ');
+  const dotColor = rejected > 0 && approved === 0 ? 'bg-red-400/60' : 'bg-green-400';
+
+  return (
+    <div className="px-4 pb-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 group"
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+        <span className="text-[11px] opacity-50">{label}</span>
+        <svg
+          fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+          className="w-3 h-3 opacity-30 group-hover:opacity-60 transition-all"
+          style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+        >
+          <path d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="mt-1 ml-3 flex flex-col gap-1">
+          {proposals.map(p => (
+            <div key={p.proposal_id} className="px-2 py-1 rounded-md text-[11px] font-mono opacity-40" style={{ background: 'rgba(255,255,255,0.05)' }}>
+              <span className={p.status === 'approved' ? 'text-green-400' : 'text-red-400'}>
+                {p.status === 'approved' ? '✓' : '✗'}
+              </span>{' '}
+              {proposalDetail(p)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function MessageBubble({ role, content, proposals, processingProposals, onApprove, onReject }: Props) {
   const isUser = role === 'user';
   const pendingProposals = proposals?.filter(p => p.status === 'pending') || [];
   const resolvedProposals = proposals?.filter(p => p.status !== 'pending') || [];
   const hasPending = pendingProposals.length > 0;
+  const isProcessing = pendingProposals.some(p => processingProposals?.has(p.proposal_id));
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -251,33 +312,40 @@ export default function MessageBubble({ role, content, proposals, onApprove, onR
           {isUser ? content : renderMarkdown(content)}
         </div>
 
-        {/* Resolved proposals — small inline status */}
-        {resolvedProposals.map(p => (
-          <div key={p.proposal_id} className="px-4 pb-2 flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${p.status === 'approved' ? 'bg-green-400' : 'bg-red-400/60'}`} />
-            <span className="text-[11px] opacity-50">
-              {p.status === 'approved' ? 'Approved' : 'Rejected'}
-            </span>
-          </div>
-        ))}
+        {/* Resolved proposals — collapsed summary with expandable detail */}
+        {resolvedProposals.length > 0 && (
+          <ResolvedProposalsSummary proposals={resolvedProposals} />
+        )}
 
       </div>
 
-      {/* Pending proposals — small pill buttons below the bubble, right-aligned */}
+      {/* Pending proposals — small pill buttons or processing indicator */}
       {hasPending && (
         <div className="flex items-center gap-1.5 mt-1.5">
-          <button
-            onClick={() => pendingProposals.forEach(p => onReject?.(p.proposal_id))}
-            className="px-3 py-1 rounded-full text-[11px] font-medium text-text-muted hover:text-red-400 border border-border-strong bg-surface-2 transition-colors"
-          >
-            Reject
-          </button>
-          <button
-            onClick={() => pendingProposals.forEach(p => onApprove?.(p))}
-            className="px-3 py-1 rounded-full text-[11px] font-semibold text-surface-0 bg-honey hover:bg-honey-dim transition-colors"
-          >
-            Accept
-          </button>
+          {isProcessing ? (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-medium text-text-muted border border-border-strong bg-surface-2">
+              <span
+                className="w-3 h-3 rounded-full border-2 border-honey/30 border-t-honey"
+                style={{ animation: 'proposalSpin 0.6s linear infinite' }}
+              />
+              Saving to Linear...
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={() => pendingProposals.forEach(p => onReject?.(p.proposal_id))}
+                className="px-3 py-1 rounded-full text-[11px] font-medium text-text-muted hover:text-red-400 border border-border-strong bg-surface-2 transition-colors"
+              >
+                Reject
+              </button>
+              <button
+                onClick={() => pendingProposals.forEach(p => onApprove?.(p))}
+                className="px-3 py-1 rounded-full text-[11px] font-semibold text-surface-0 bg-honey hover:bg-honey-dim transition-colors"
+              >
+                Accept
+              </button>
+            </>
+          )}
         </div>
       )}
      </div>
@@ -289,6 +357,9 @@ export default function MessageBubble({ role, content, proposals, onApprove, onR
         }
         .proposal-glow {
           animation: proposalPulse 2s ease-in-out infinite;
+        }
+        @keyframes proposalSpin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>

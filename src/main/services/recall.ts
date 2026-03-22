@@ -3,12 +3,11 @@ import { getDb } from '../db';
 const RECALL_API_BASE = 'https://eu-central-1.recall.ai/api/v1';
 
 function getApiKey(): string {
-  const db = getDb();
-  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('recall_api_key') as { value: string } | undefined;
-  if (!row?.value) {
-    throw new Error('Recall.ai API key not configured. Set it in Settings.');
+  const key = process.env.RECALL_API_KEY;
+  if (!key) {
+    throw new Error('Recall.ai API key not configured. Set RECALL_API_KEY in .env');
   }
-  return row.value;
+  return key;
 }
 
 async function recallFetch(path: string, options: RequestInit = {}): Promise<Response> {

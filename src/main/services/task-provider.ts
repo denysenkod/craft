@@ -46,4 +46,5 @@ export interface TaskProvider {
   get(taskId: string): Promise<TaskItem | null>;
   create(input: CreateTaskInput): Promise<CreatedTask>;
   update(input: UpdateTaskInput): Promise<{ id: string }>;
+  delete(taskId: string): Promise<{ id: string }>;
 }

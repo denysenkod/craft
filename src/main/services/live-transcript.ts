@@ -8,7 +8,23 @@ import { app } from 'electron';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const WebSocket = require('ws');
 
-const CLOUDFLARED_URL = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64';
+function getCloudflaredUrl(): string {
+  const platform = process.platform;
+  const arch = process.arch;
+
+  if (platform === 'darwin') {
+    // cloudflared provides a universal macOS binary
+    return 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz';
+  } else if (platform === 'win32') {
+    return 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe';
+  } else {
+    // Linux
+    if (arch === 'arm64') {
+      return 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64';
+    }
+    return 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64';
+  }
+}
 
 interface LiveSession {
   wss: InstanceType<typeof WebSocket.Server>;
@@ -62,9 +78,24 @@ async function ensureCloudflared(): Promise<string> {
     return cfPath;
   }
 
+  const url = getCloudflaredUrl();
   console.log('[tunnel] Downloading cloudflared...');
-  await downloadFile(CLOUDFLARED_URL, cfPath);
-  fs.chmodSync(cfPath, 0o755);
+
+  if (url.endsWith('.tgz')) {
+    // macOS: download .tgz, extract, then move the binary
+    const tgzPath = cfPath + '.tgz';
+    await downloadFile(url, tgzPath);
+    const { execSync } = require('child_process');
+    const extractDir = path.dirname(cfPath);
+    execSync(`tar -xzf "${tgzPath}" -C "${extractDir}"`, { stdio: 'ignore' });
+    fs.unlinkSync(tgzPath);
+    // The archive contains a 'cloudflared' binary in the extract dir
+    fs.chmodSync(cfPath, 0o755);
+  } else {
+    await downloadFile(url, cfPath);
+    fs.chmodSync(cfPath, 0o755);
+  }
+
   console.log('[tunnel] cloudflared downloaded');
   return cfPath;
 }
