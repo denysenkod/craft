@@ -5,9 +5,11 @@ import TranscriptView from './components/TranscriptView';
 import ChatInterface from './components/ChatInterface';
 import TaskReview from './components/TaskReview';
 import SettingsModal from './components/SettingsModal';
+import TranscriptList from './components/TranscriptList';
 import MomTestModal from './components/MomTestModal';
+import BuildView from './components/BuildView';
 
-type Screen = 'meetings' | 'transcript' | 'tasks';
+type Screen = 'meetings' | 'transcript' | 'tasks' | 'build';
 
 interface CurrentContext {
   screen: Screen;
@@ -33,12 +35,19 @@ export default function App() {
     meetingId: meetingId || undefined,
     meetingTitle: selectedMeeting?.title,
   };
-  const showChat = screen === 'transcript' || (screen === 'tasks' && tasksChatOpen);
+  const showChat = (screen === 'transcript' && selectedMeeting !== null) || (screen === 'tasks' && tasksChatOpen);
 
   const openTranscript = (calendarEventId: string, meetingTitle: string) => {
     setSelectedMeeting({ id: calendarEventId, title: meetingTitle });
     setTranscriptId(null);
     setMeetingId(null);
+    setScreen('transcript');
+  };
+
+  const openTranscriptById = (tId: string, mId: string, title: string) => {
+    setSelectedMeeting({ id: mId, title });
+    setTranscriptId(tId);
+    setMeetingId(mId);
     setScreen('transcript');
   };
 
@@ -57,7 +66,7 @@ export default function App() {
 
       {/* Sidebar */}
       <div style={{ paddingTop: '40px' }}>
-        <Sidebar active={screen} onNavigate={setScreen} onSettings={() => setSettingsOpen(true)} />
+        <Sidebar active={screen} onNavigate={(s) => { if (s === 'transcript') setSelectedMeeting(null); setScreen(s); }} onSettings={() => setSettingsOpen(true)} />
       </div>
 
       {/* Main Content */}
@@ -68,14 +77,20 @@ export default function App() {
             onOpenMomTest={() => setMomTestOpen(true)}
           />
         )}
-        {screen === 'transcript' && (
+        {screen === 'transcript' && !selectedMeeting && (
+          <TranscriptList onSelect={openTranscriptById} />
+        )}
+        {screen === 'transcript' && selectedMeeting && (
           <TranscriptView
-            meetingId={selectedMeeting?.id || null}
-            meetingTitle={selectedMeeting?.title || 'Transcript'}
+            meetingId={selectedMeeting.id}
+            meetingTitle={selectedMeeting.title}
+            initialTranscriptId={transcriptId}
             onTranscriptLoaded={handleTranscriptLoaded}
+            onBack={() => setSelectedMeeting(null)}
           />
         )}
         {screen === 'tasks' && <TaskReview refreshKey={taskVersion} />}
+        {screen === 'build' && <BuildView />}
       </div>
 
       {/* Chat toggle button — tasks screen */}
