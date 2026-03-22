@@ -1,7 +1,14 @@
 import { BrowserWindow } from 'electron';
-import { query, type Query, type SDKAssistantMessage, type SDKResultMessage, type SDKResultSuccess, type SDKToolUseSummaryMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Query, SDKAssistantMessage, SDKResultMessage, SDKResultSuccess, SDKToolUseSummaryMessage } from '@anthropic-ai/claude-agent-sdk';
 import { getDb } from '../db';
 import { v4 as uuid } from 'uuid';
+
+// Lazy-load the SDK to avoid native crashes at startup
+function getSDK() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const sdk = require('@anthropic-ai/claude-agent-sdk');
+  return sdk.query as typeof import('@anthropic-ai/claude-agent-sdk').query;
+}
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -158,7 +165,8 @@ Begin.`;
 
   try {
     // Start the initial query
-    let session = query({
+    const queryFn = getSDK();
+    let session = queryFn({
       prompt: initialPrompt,
       options: {
         cwd: config.repoPath,
@@ -248,7 +256,7 @@ Begin.`;
           updateBuildStatus(buildId, 'running');
 
           // Resume with a new query using the session resume option
-          session = query({
+          session = queryFn({
             prompt: answer,
             options: {
               cwd: config.repoPath,
