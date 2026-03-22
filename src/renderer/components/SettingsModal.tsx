@@ -35,6 +35,14 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [linearTeams, setLinearTeams] = useState<LinearTeam[]>([]);
   const [connecting, setConnecting] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState(true);
+  const [repos, setRepos] = useState<{ id: string; name: string; path: string; github_url: string | null; default_branch: string }[]>([]);
+  const [showAddRepo, setShowAddRepo] = useState(false);
+  const [repoName, setRepoName] = useState('');
+  const [repoPath, setRepoPath] = useState('');
+  const [repoGithubUrl, setRepoGithubUrl] = useState('');
+  const [repoDefaultBranch, setRepoDefaultBranch] = useState('main');
+  const [repoValidation, setRepoValidation] = useState<{ valid: boolean; error?: string } | null>(null);
+  const [addingRepo, setAddingRepo] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -54,6 +62,8 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     }).catch(() => {
       setLoadingStatus(false);
     });
+
+    window.api.invoke('repo:list').then((r) => setRepos(r as typeof repos));
   }, [open]);
 
   if (!open) return null;
@@ -97,6 +107,37 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     await window.api.invoke('linear:disconnect');
     setLinearStatus({ connected: false });
     setLinearTeams([]);
+  };
+
+  const handleValidateRepo = async () => {
+    if (!repoPath) return;
+    const result = await window.api.invoke('repo:validate', repoPath) as { valid: boolean; error?: string };
+    setRepoValidation(result);
+  };
+
+  const handleAddRepo = async () => {
+    if (!repoName || !repoPath) return;
+    setAddingRepo(true);
+    await window.api.invoke('repo:add', {
+      name: repoName,
+      path: repoPath,
+      github_url: repoGithubUrl || undefined,
+      default_branch: repoDefaultBranch,
+    });
+    const updated = await window.api.invoke('repo:list') as typeof repos;
+    setRepos(updated);
+    setShowAddRepo(false);
+    setRepoName('');
+    setRepoPath('');
+    setRepoGithubUrl('');
+    setRepoDefaultBranch('main');
+    setRepoValidation(null);
+    setAddingRepo(false);
+  };
+
+  const handleRemoveRepo = async (id: string) => {
+    await window.api.invoke('repo:remove', id);
+    setRepos(repos.filter(r => r.id !== id));
   };
 
   const labelClass = 'block text-xs font-medium text-text-muted mb-1.5';
@@ -215,6 +256,112 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             </div>
           )}
         </div>
+          {/* Repositories */}
+          <div className="px-7 pb-6">
+            <div className="pt-5 border-t border-border-base">
+              <label className={labelClass}>Repositories</label>
+
+              {repos.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {repos.map((repo) => (
+                    <div key={repo.id} className="border border-border-base rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm text-text-primary font-medium">{repo.name}</div>
+                          <div className="text-xs text-text-muted mt-0.5 font-mono">{repo.path}</div>
+                          {repo.github_url && (
+                            <div className="text-xs text-text-muted mt-0.5">{repo.github_url}</div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveRepo(repo.id)}
+                          className="text-xs text-text-muted underline underline-offset-2 hover:text-red-400 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showAddRepo ? (
+                <div className="border border-border-base rounded-lg p-3 space-y-3">
+                  <div>
+                    <label className="block text-xs text-text-muted mb-1">Name</label>
+                    <input
+                      value={repoName}
+                      onChange={(e) => setRepoName(e.target.value)}
+                      placeholder="e.g., Frontend App"
+                      className="w-full text-sm px-3 py-2 bg-surface-3 border border-border-base text-text-primary rounded-lg outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-muted mb-1">Local Path</label>
+                    <div className="flex gap-2">
+                      <input
+                        value={repoPath}
+                        onChange={(e) => { setRepoPath(e.target.value); setRepoValidation(null); }}
+                        placeholder="/Users/you/projects/my-app"
+                        className="flex-1 text-sm px-3 py-2 bg-surface-3 border border-border-base text-text-primary rounded-lg outline-none font-mono"
+                      />
+                      <button
+                        onClick={handleValidateRepo}
+                        className="text-xs px-3 py-2 border border-border-base bg-surface-3 text-text-secondary rounded-lg hover:border-honey hover:text-honey transition-all"
+                      >
+                        Validate
+                      </button>
+                    </div>
+                    {repoValidation && (
+                      <div className={`text-xs mt-1 ${repoValidation.valid ? 'text-green-400' : 'text-red-400'}`}>
+                        {repoValidation.valid ? 'Valid git repository' : repoValidation.error}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-muted mb-1">GitHub URL (optional)</label>
+                    <input
+                      value={repoGithubUrl}
+                      onChange={(e) => setRepoGithubUrl(e.target.value)}
+                      placeholder="https://github.com/org/repo"
+                      className="w-full text-sm px-3 py-2 bg-surface-3 border border-border-base text-text-primary rounded-lg outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-muted mb-1">Default Branch</label>
+                    <input
+                      value={repoDefaultBranch}
+                      onChange={(e) => setRepoDefaultBranch(e.target.value)}
+                      placeholder="main"
+                      className="w-full text-sm px-3 py-2 bg-surface-3 border border-border-base text-text-primary rounded-lg outline-none"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => setShowAddRepo(false)}
+                      className="text-xs px-3 py-2 text-text-muted hover:text-text-secondary transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddRepo}
+                      disabled={!repoName || !repoPath || addingRepo}
+                      className="text-xs px-4 py-2 bg-honey text-surface-0 rounded-lg font-medium hover:bg-honey-dim disabled:opacity-40 transition-all"
+                    >
+                      {addingRepo ? 'Adding...' : 'Add Repository'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddRepo(true)}
+                  className="w-full text-sm font-medium px-4 py-2.5 border border-dashed border-border-base text-text-muted rounded-lg hover:border-honey hover:text-honey transition-all"
+                >
+                  + Add Repository
+                </button>
+              )}
+            </div>
+          </div>
         <div className="px-7 py-4 border-t border-border-strong flex justify-end">
           <button
             onClick={onClose}
