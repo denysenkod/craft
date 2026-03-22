@@ -287,9 +287,8 @@ Begin.`;
         }
       } else {
         // Error result
-        const errorMsg = 'errors' in resultMessage
-          ? (resultMessage as any).errors?.join('; ') || `Build ended with ${resultMessage.subtype}`
-          : `Build ended with ${resultMessage.subtype}`;
+        const errResult = resultMessage as any;
+        const errorMsg = errResult.errors?.join('; ') || `Build ended with ${errResult.subtype || 'error'}`;
 
         updateBuildStatus(buildId, 'failed', { error_message: errorMsg });
         emitEvent(buildId, 'error', errorMsg);

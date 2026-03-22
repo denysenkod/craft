@@ -23,7 +23,7 @@ declare global {
 }
 
 interface CurrentContext {
-  screen: 'meetings' | 'transcript' | 'tasks';
+  screen: 'meetings' | 'transcript' | 'tasks' | 'build';
   transcriptId?: string;
   meetingId?: string;
   meetingTitle?: string;
