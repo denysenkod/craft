@@ -70,5 +70,4 @@ export function registerAllHandlers() {
   // Build handlers
   registerBuildHandlers();
 
-  console.log('IPC handlers registered');
 }
