@@ -26,7 +26,7 @@ export function getDb(): Database.Database {
   return db;
 }
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 export function migrate() {
   const db = getDb();
@@ -109,6 +109,53 @@ export function migrate() {
       }
 
       db.pragma('user_version = 2');
+    })();
+  }
+
+  if (version < 3) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS repos (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          path TEXT NOT NULL,
+          github_url TEXT,
+          default_branch TEXT NOT NULL DEFAULT 'main',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS builds (
+          id TEXT PRIMARY KEY,
+          repo_id TEXT NOT NULL REFERENCES repos(id),
+          task_title TEXT NOT NULL,
+          task_description TEXT,
+          pm_notes TEXT,
+          transcript_context TEXT,
+          source TEXT NOT NULL DEFAULT 'linear',
+          source_id TEXT,
+          status TEXT NOT NULL DEFAULT 'queued',
+          branch_name TEXT,
+          pr_url TEXT,
+          summary TEXT,
+          files_changed INTEGER DEFAULT 0,
+          error_message TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS build_events (
+          id TEXT PRIMARY KEY,
+          build_id TEXT NOT NULL REFERENCES builds(id) ON DELETE CASCADE,
+          type TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_builds_repo ON builds(repo_id);
+        CREATE INDEX IF NOT EXISTS idx_builds_status ON builds(status);
+        CREATE INDEX IF NOT EXISTS idx_build_events_build ON build_events(build_id);
+      `);
+      db.pragma('user_version = 3');
     })();
   }
 }
