@@ -82,6 +82,52 @@ export function registerMeetingHandlers() {
     };
   });
 
+  ipcMain.handle('transcript:list', async () => {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT t.id, t.meeting_id, m.title, t.transcript_json, t.created_at
+      FROM transcripts t
+      JOIN meetings m ON m.id = t.meeting_id
+      WHERE t.transcript_json IS NOT NULL AND t.transcript_json != '[]'
+      ORDER BY t.created_at DESC
+    `).all() as Array<{ id: string; meeting_id: string; title: string; transcript_json: string | null; created_at: string }>;
+
+    return rows.map((row) => {
+      let speakers: string[] = [];
+      let durationMin = 0;
+
+      if (row.transcript_json) {
+        try {
+          const entries = JSON.parse(row.transcript_json) as Array<{
+            participant?: { name?: string };
+            words?: Array<{ start_timestamp?: { relative: number }; end_timestamp?: { relative: number } }>;
+          }>;
+          const speakerSet = new Set<string>();
+          let maxTime = 0;
+          for (const entry of entries) {
+            if (entry.participant?.name) speakerSet.add(entry.participant.name);
+            for (const w of entry.words || []) {
+              if (w.end_timestamp?.relative && w.end_timestamp.relative > maxTime) {
+                maxTime = w.end_timestamp.relative;
+              }
+            }
+          }
+          speakers = Array.from(speakerSet);
+          durationMin = Math.round(maxTime / 60);
+        } catch { /* ignore parse errors */ }
+      }
+
+      return {
+        id: row.id,
+        meetingId: row.meeting_id,
+        title: row.title,
+        speakers,
+        durationMin,
+        createdAt: row.created_at,
+      };
+    });
+  });
+
   ipcMain.handle('transcript:get', async (_e, transcriptId: string) => {
     const db = getDb();
     const row = db.prepare(

@@ -230,20 +230,23 @@ export function closeMeetingChat() {
 export function registerMeetingChatHandlers() {
   ipcMain.handle('meeting-chat:send', async (event, message: string) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win || !currentEventId) return;
+    if (!win || !currentEventId) {
+      console.error('[meeting-chat] No window or currentEventId', { win: !!win, currentEventId });
+      return;
+    }
 
     abortController = new AbortController();
     const signal = abortController.signal;
 
-    const client = new Anthropic();
-    const systemPrompt = buildSystemPrompt(win.title || 'Meeting', currentEventId);
-    const transcript = await fetchCurrentTranscript(currentEventId);
-    const contextBlock = `<current_transcript>\n${transcript}\n</current_transcript>\n\n`;
-
-    conversationHistory.push({ role: 'user', content: contextBlock + message });
-    win.webContents.send('meeting-chat:event', { type: 'thinking' });
-
     try {
+      const client = new Anthropic();
+      const systemPrompt = buildSystemPrompt(win.title || 'Meeting', currentEventId);
+      const transcript = await fetchCurrentTranscript(currentEventId);
+      const contextBlock = `<current_transcript>\n${transcript}\n</current_transcript>\n\n`;
+
+      conversationHistory.push({ role: 'user', content: contextBlock + message });
+      win.webContents.send('meeting-chat:event', { type: 'thinking' });
+
       let messages = [...conversationHistory];
       let fullText = '';
       let iterations = 0;
@@ -297,6 +300,7 @@ export function registerMeetingChatHandlers() {
 
       win.webContents.send('meeting-chat:event', { type: 'message', content: fullText });
     } catch (err: unknown) {
+      console.error('[meeting-chat] Error:', err);
       if (!signal.aborted) {
         win.webContents.send('meeting-chat:event', { type: 'error', message: (err as Error).message });
       }

@@ -132,14 +132,14 @@ export default function TaskReview({ refreshKey = 0 }: { refreshKey?: number }) 
       {/* Header */}
       <div className="px-8 pt-8 pb-5 flex items-end justify-between shrink-0">
         <div>
-          <h1 className="text-3xl font-light italic text-text-primary">Tasks</h1>
-          <p className="font-mono text-[10px] text-text-muted uppercase tracking-[0.12em] mt-1.5">Linear Issues</p>
+          <h1 className="text-3xl font-semibold text-text-primary tracking-tight">Tasks</h1>
+          <p className="text-sm text-text-muted mt-1">Linear Issues</p>
         </div>
         {linearConnected && (
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowBlockedOnly(!showBlockedOnly)}
-              className="font-mono text-[10px] px-3 py-1.5 rounded-full border transition-all"
+              className="text-xs px-3 py-1.5 rounded-full border transition-all"
               style={{
                 borderColor: showBlockedOnly ? '#E5484D' : '#3A3A44',
                 color: showBlockedOnly ? '#E5484D' : '#5E5B54',
@@ -150,7 +150,7 @@ export default function TaskReview({ refreshKey = 0 }: { refreshKey?: number }) 
             </button>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-              <span className="font-mono text-[10px] text-text-muted">Connected</span>
+              <span className="text-xs text-text-muted">Connected</span>
             </div>
           </div>
         )}
@@ -160,13 +160,13 @@ export default function TaskReview({ refreshKey = 0 }: { refreshKey?: number }) 
       {!linearConnected ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-[14px] text-text-muted mb-2">Connect to Linear to see your issues</p>
-            <p className="font-mono text-[10px] text-text-muted">Settings &rarr; Linear &rarr; Connect</p>
+            <p className="text-sm text-text-muted mb-2">Connect to Linear to see your issues</p>
+            <p className="text-xs text-text-muted">Settings &rarr; Linear &rarr; Connect</p>
           </div>
         </div>
       ) : loadingIssues ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="font-mono text-[11px] text-text-muted animate-pulse">Loading issues...</p>
+          <p className="text-sm text-text-muted animate-pulse">Loading issues...</p>
         </div>
       ) : (
         <div className="flex-1 overflow-hidden px-6 pb-6">
@@ -176,19 +176,19 @@ export default function TaskReview({ refreshKey = 0 }: { refreshKey?: number }) 
                 {/* Column header */}
                 <div className="flex items-center gap-2 px-2 py-3 shrink-0">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: col.color }} />
-                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
                     {col.name}
                   </span>
-                  <span className="font-mono text-[11px] text-text-muted">{col.issues.length}</span>
+                  <span className="text-xs text-text-muted">{col.issues.length}</span>
                   {col.blockedCount > 0 && (
-                    <span className="font-mono text-[10px] text-red-400 ml-auto">{col.blockedCount} blocked</span>
+                    <span className="text-xs text-red-400 ml-auto">{col.blockedCount} blocked</span>
                   )}
                 </div>
                 {/* Column body */}
                 <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1">
                   {col.issues.length === 0 ? (
                     <div className="py-8 text-center rounded-lg border border-dashed border-border-base">
-                      <span className="font-mono text-[10px] text-text-muted">No issues</span>
+                      <span className="text-xs text-text-muted">No issues</span>
                     </div>
                   ) : col.issues.map((issue) => (
                     <button
@@ -203,28 +203,28 @@ export default function TaskReview({ refreshKey = 0 }: { refreshKey?: number }) 
                         <PriorityIcon priority={issue.priority} />
                         <span className="font-mono text-[10px] text-text-muted">{issue.identifier}</span>
                       </div>
-                      <div className="text-[13px] font-medium text-text-primary leading-snug mb-1">{issue.title}</div>
+                      <div className="text-sm font-medium text-text-primary leading-snug mb-1">{issue.title}</div>
                       {issue.description && (
-                        <div className="text-[11px] text-text-muted leading-snug line-clamp-2 mb-2">{issue.description}</div>
+                        <div className="text-xs text-text-muted leading-snug line-clamp-2 mb-2">{issue.description}</div>
                       )}
                       {issue.assigneeName && (
                         <div className="flex items-center gap-1.5 mt-2">
                           <div className="w-5 h-5 rounded-full bg-surface-3 border border-border-base flex items-center justify-center">
                             <span className="font-mono text-[8px] font-semibold text-text-muted">{issue.assigneeInitials}</span>
                           </div>
-                          <span className="text-[11px] text-text-muted">{issue.assigneeName}</span>
+                          <span className="text-xs text-text-muted">{issue.assigneeName}</span>
                         </div>
                       )}
                       {/* Relation badges */}
                       {(issue.blockedBy.length > 0 || issue.blocking.length > 0) && (
                         <div className="flex gap-1.5 mt-2 flex-wrap">
                           {issue.blockedBy.length > 0 && (
-                            <span className="font-mono text-[9px] font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+                            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
                               Blocked by {issue.blockedBy.length}
                             </span>
                           )}
                           {issue.blocking.length > 0 && (
-                            <span className="font-mono text-[9px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
                               Blocks {issue.blocking.length}
                             </span>
                           )}
@@ -271,7 +271,7 @@ function IssueDetailModal({ issue, onClose }: { issue: LinearIssue; onClose: () 
           <div className="flex items-center gap-2.5">
             <div className="w-3 h-3 rounded-full" style={{ background: issue.statusColor }} />
             <span className="font-mono text-[11px] text-text-muted">{issue.identifier}</span>
-            <span className="font-mono text-[10px] text-text-muted px-2 py-0.5 rounded-full border border-border-base">{issue.status}</span>
+            <span className="text-xs text-text-muted px-2 py-0.5 rounded-full border border-border-base">{issue.status}</span>
           </div>
           <button
             onClick={onClose}
@@ -285,29 +285,29 @@ function IssueDetailModal({ issue, onClose }: { issue: LinearIssue; onClose: () 
 
         {/* Title */}
         <div className="px-6 pb-4">
-          <h2 className="text-[20px] font-medium text-text-primary leading-snug">{issue.title}</h2>
+          <h2 className="text-xl font-semibold text-text-primary leading-snug">{issue.title}</h2>
         </div>
 
         {/* Meta */}
         <div className="flex gap-6 px-6 pb-5 border-b border-border-base">
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted mb-1">Priority</div>
+            <div className="text-xs font-medium text-text-muted mb-1">Priority</div>
             <div className="flex items-center gap-2">
               <PriorityIcon priority={issue.priority} />
-              <span className="text-[12px] text-text-secondary">{issue.priorityLabel || 'None'}</span>
+              <span className="text-sm text-text-secondary">{issue.priorityLabel || 'None'}</span>
             </div>
           </div>
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted mb-1">Assignee</div>
-            <span className="text-[12px] text-text-secondary">{issue.assigneeName || 'Unassigned'}</span>
+            <div className="text-xs font-medium text-text-muted mb-1">Assignee</div>
+            <span className="text-sm text-text-secondary">{issue.assigneeName || 'Unassigned'}</span>
           </div>
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted mb-1">Created</div>
-            <span className="text-[12px] text-text-secondary">{new Date(issue.createdAt).toLocaleDateString()}</span>
+            <div className="text-xs font-medium text-text-muted mb-1">Created</div>
+            <span className="text-sm text-text-secondary">{new Date(issue.createdAt).toLocaleDateString()}</span>
           </div>
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-wider text-text-muted mb-1">Updated</div>
-            <span className="text-[12px] text-text-secondary">{new Date(issue.updatedAt).toLocaleDateString()}</span>
+            <div className="text-xs font-medium text-text-muted mb-1">Updated</div>
+            <span className="text-sm text-text-secondary">{new Date(issue.updatedAt).toLocaleDateString()}</span>
           </div>
         </div>
 
@@ -316,22 +316,22 @@ function IssueDetailModal({ issue, onClose }: { issue: LinearIssue; onClose: () 
           <div className="px-6 py-4 border-b border-border-base">
             {issue.blockedBy.length > 0 && (
               <div className="mb-3">
-                <div className="font-mono text-[9px] uppercase tracking-wider text-red-400 mb-2">Blocked by</div>
+                <div className="text-xs font-medium text-red-400 mb-2">Blocked by</div>
                 {issue.blockedBy.map((blocker) => (
                   <div key={blocker.id} className="flex items-center gap-2 py-1">
                     <span className="font-mono text-[10px] text-text-muted">{blocker.identifier}</span>
-                    <span className="text-[12px] text-text-secondary">{blocker.title}</span>
+                    <span className="text-sm text-text-secondary">{blocker.title}</span>
                   </div>
                 ))}
               </div>
             )}
             {issue.blocking.length > 0 && (
               <div>
-                <div className="font-mono text-[9px] uppercase tracking-wider text-amber-400 mb-2">Blocks</div>
+                <div className="text-xs font-medium text-amber-400 mb-2">Blocks</div>
                 {issue.blocking.map((blocked) => (
                   <div key={blocked.id} className="flex items-center gap-2 py-1">
                     <span className="font-mono text-[10px] text-text-muted">{blocked.identifier}</span>
-                    <span className="text-[12px] text-text-secondary">{blocked.title}</span>
+                    <span className="text-sm text-text-secondary">{blocked.title}</span>
                   </div>
                 ))}
               </div>
@@ -342,9 +342,9 @@ function IssueDetailModal({ issue, onClose }: { issue: LinearIssue; onClose: () 
         {/* Description */}
         <div className="px-6 py-5">
           {issue.description ? (
-            <div className="text-[13px] text-text-secondary leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(issue.description) }} />
+            <div className="text-sm text-text-secondary leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(issue.description) }} />
           ) : (
-            <div className="text-[13px] text-text-muted italic">No description</div>
+            <div className="text-sm text-text-muted italic">No description</div>
           )}
         </div>
 
@@ -354,7 +354,7 @@ function IssueDetailModal({ issue, onClose }: { issue: LinearIssue; onClose: () 
             href={issue.url}
             target="_blank"
             rel="noreferrer"
-            className="font-mono text-[11px] font-medium px-4 py-2 rounded-lg border border-[#5E6AD2] text-[#5E6AD2] uppercase tracking-wider hover:bg-[#5E6AD2] hover:text-white transition-all"
+            className="text-sm font-medium px-4 py-2 rounded-lg border border-[#5E6AD2] text-[#5E6AD2] hover:bg-[#5E6AD2] hover:text-white transition-all"
             onClick={(e) => {
               e.preventDefault();
               window.api.invoke('settings:get'); // just to trigger — we'd use shell.openExternal in main
