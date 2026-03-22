@@ -35,6 +35,7 @@ export interface BuildEvent {
 
 const activeSessions = new Map<string, Query>();
 const pendingAnswerResolvers = new Map<string, (answer: string) => void>();
+const cancelledBuilds = new Set<string>();
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -238,7 +239,8 @@ Begin.`;
           pendingAnswerResolvers.delete(buildId);
 
           // Check if the build was cancelled while waiting
-          if (!activeSessions.has(buildId)) {
+          if (cancelledBuilds.has(buildId)) {
+            cancelledBuilds.delete(buildId);
             break;
           }
 
@@ -303,6 +305,7 @@ Begin.`;
   } finally {
     activeSessions.delete(buildId);
     pendingAnswerResolvers.delete(buildId);
+    cancelledBuilds.delete(buildId);
   }
 }
 
@@ -326,10 +329,10 @@ export function cancelBuild(buildId: string): boolean {
   const session = activeSessions.get(buildId);
   if (!session) return false;
 
-  // If waiting for an answer, resolve it to unblock (executeBuild will check activeSessions)
+  // If waiting for an answer, resolve it to unblock (executeBuild will check cancelledBuilds)
+  cancelledBuilds.add(buildId);
   const resolver = pendingAnswerResolvers.get(buildId);
   if (resolver) {
-    activeSessions.delete(buildId);
     resolver(''); // unblock the awaiting promise
     pendingAnswerResolvers.delete(buildId);
   }
@@ -359,7 +362,7 @@ export function isBuildActive(buildId: string): boolean {
  * Extract a GitHub PR URL from text.
  */
 function extractPrUrl(text: string): string | null {
-  const match = text.match(/https:\/\/github\.com\/[^\s)]+\/pull\/\d+/);
+  const match = text.match(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/);
   return match ? match[0] : null;
 }
 
